@@ -215,10 +215,17 @@ follows it. Click a step to see the command it ran; for a batch, **Show its N ru
 when the pipeline put them there. Below the steps are the pipeline's own metrics and files, like the report it
 made from all the runs.
 
+<Shot
+  id="commit/pipeline"
+  caption="The calibration pipeline comes before the evaluation runs it started. Its four steps succeeded; its metrics and its noise profile come from its report, over all the runs."
+/>
+
 When a step failed, it has a red border: its details say how the command ended, with a button to the pipeline's
 [log](/docs/user-guide/logs), which ends with a summary of the steps. A pipeline that hasn't started yet shows its
 steps as not started; one run by your project's own code shows them without status. To write pipelines, or find
 what went wrong, see [Pipelines](/docs/pipelines#debug).
+
+<Shot id="commit/pipeline-failed" />
 
 <details>
 <summary>Compact cards, and the batch and database in runs' names</summary>

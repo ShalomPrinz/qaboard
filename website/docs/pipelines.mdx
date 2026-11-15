@@ -24,6 +24,11 @@ my-pipeline:
 qa batch my-pipeline
 ```
 
+<Shot
+  id="commit/pipeline"
+  caption="On the commit's page, a calibration pipeline: images, then a script that fits the sensor's noise from them, an evaluation with that calibration, and a report. The metrics and the plot on its card are the report's."
+/>
+
 ## Your first pipeline {#first-pipeline}
 You need a batch that already works, here `my-images`. See [Batches of inputs](/docs/batches-running-on-multiple-inputs)
 if you don't have one yet.
@@ -393,6 +398,11 @@ steps:
 The next steps run, and the pipeline is still marked as failed, so you know something went wrong. `ok.output_dirs`
 keeps the runs that succeeded.
 
+<Shot
+  id="commit/pipeline-failed"
+  caption="A step allowed to fail failed: it has a red border, its details give its exit code and its command, and the pipeline is marked as failed."
+/>
+
 ### Several commands in a step {#recipe-commands}
 A list of commands runs in order, as one step. It stops at the first that fails:
 
@@ -430,6 +440,10 @@ With `qa --share`, or in CI, the pipeline shows on its commit's page:
 - **Click a step** for the command it ran. For a batch, **Show its N runs** opens them. A failed step has a button
   to the pipeline's log.
 - The card shows the pipeline's files, with your project's visualizations, and its metrics.
+
+<Shot id="commit/pipeline-step" />
+
+<Shot id="commit/pipeline-running" />
 
 ## Tuning with pipelines {#tuning}
 You can start a pipeline from **Run Tests / Tuning** in the web app, or with `qa --tuning`, with parameters

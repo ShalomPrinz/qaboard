@@ -657,6 +657,70 @@ shots:
       height: 351
       alt: 'A run card of the gateway''s steady-high profile, tagged "attempt 3". Its tooltip: the run was done again, these are its latest attempt''s results; attempt 1 failed, attempt 2 succeeded, with its metrics (cpu_per_req 357.2, goodput 3811...), and the logs of earlier attempts are in the Logs view.'
       caption: A run done again shows its latest attempt; the tag says how the earlier ones ended and what they measured.
+  # Pipelines: no demo project has one yet. Their stand-ins come from `uv run docs-media/standins/pipelines.py`: the
+  # web app's production build with the API mocked, on real runs of the camera ISP example (its run() on its charts,
+  # with the default flags) and a real fit of their raw noise, on a 4-CPU VM, not on the demo stack. The pipeline's
+  # scripts (calibrate.py, report.py, publish_profile.py) aren't in the example, and the failed publish is staged
+  - id: commit/pipeline
+    kind: still
+    project: image-quality
+    shows: 'A calibration pipeline first on its commit''s page: its steps (calibration images, calibrate, evaluation images, report), its metrics and the noise profile it fitted; an evaluation run below it.'
+    pages: [pipelines, user-guide/commit-page]
+    needs: a pipeline in the example's batches, and in its story
+    phase: 3
+    status: planned
+    standin:
+      light: standins/commit/pipeline.webp
+      dark: standins/commit/pipeline-dark.webp
+      width: 968
+      height: 927
+      alt: 'The calibration pipeline''s card: four steps, all succeeded, calibration-images (6 runs, 11s), calibrate, evaluation-images (8 runs, 13s) and report; its metrics, PSNR 27.8 dB, worst PSNR 17.4 dB, SSIM 0.79, overshoot 3.55%, MTF50 0.313 cy/px; and its plot, the raw noise of the gray patches against their signal on log axes, at ISO 100, 3200 and 12800, each with its fitted line. Below, the card of an evaluation run on the slanted edge, with its MTF curve.'
+      caption: The pipeline comes first, with its steps in order. Its metrics and its plot are the report's, made from all the runs of its batches.
+  - id: commit/pipeline-step
+    kind: still
+    project: image-quality
+    shows: 'A pipeline step''s details: its status and duration, the qa batch command it ran, and a button to show its runs.'
+    pages: [pipelines]
+    needs: a pipeline in the example's batches, and in its story
+    phase: 3
+    status: planned
+    standin:
+      light: standins/commit/pipeline-step.webp
+      dark: standins/commit/pipeline-step-dark.webp
+      width: 980
+      height: 273
+      alt: 'The details of the calibration-images step, open under the pipeline''s steps: Succeeded in 11s, it runs the batch calibration-images, 6 runs, with the command qa --label "calibration" batch "calibration-images" --action-on-existing=run --action-on-pending=wait, and a "Show its 6 runs" button.'
+      caption: A step's details give the command it ran. "Show its 6 runs" opens the runs of the batch, in the batch they were put in.
+  - id: commit/pipeline-running
+    kind: still
+    project: image-quality
+    shows: 'A pipeline still running: two steps done, the evaluation batch running, the report not started.'
+    pages: [pipelines]
+    needs: a pipeline in the example's batches, and in its story
+    phase: 3
+    status: planned
+    standin:
+      light: standins/commit/pipeline-running.webp
+      dark: standins/commit/pipeline-running-dark.webp
+      width: 980
+      height: 93
+      alt: 'The calibration pipeline''s card while it runs: calibration-images (6 runs, 11s) and calibrate succeeded, evaluation-images has a spinner, and report is grayed out, not started.'
+      caption: While the pipeline runs, its card follows it, one step after the other.
+  - id: commit/pipeline-failed
+    kind: still
+    project: image-quality
+    shows: 'A pipeline whose last step failed but was allowed to: the step in red, its details with the exit code and the command.'
+    pages: [pipelines, user-guide/commit-page]
+    needs: a pipeline in the example's batches, and in its story
+    phase: 3
+    status: planned
+    standin:
+      light: standins/commit/pipeline-failed.webp
+      dark: standins/commit/pipeline-failed-dark.webp
+      width: 980
+      height: 281
+      alt: 'The calibration pipeline''s card with a fifth step, publish_profile, in red after 30s. Its details: Failed, Allowed to fail, the command exited with the code 1, see the pipeline''s log, and the command python qa/publish_profile.py with the path of the pipeline''s calibration.yaml.'
+      caption: A failed step has a red border. Allowed to fail, it didn't stop the pipeline, which is still marked as failed.
   - id: commit/core-heatmap
     kind: still
     project: serving-latency
