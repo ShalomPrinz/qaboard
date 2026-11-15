@@ -11,6 +11,7 @@ import click
 from .conventions import serialize_config, output_dirs_for_input_part
 from .attempts import latest_dir
 from .utils import merge, input_metadata
+from .pipelines import PIPELINE_INPUT, PIPELINE_TYPE
 
 
 @dataclass
@@ -146,7 +147,6 @@ class RunContext():
             # note that right now .obj is the info that will get send there
             ctx.obj["database"] = database
         input_path_absolute = (database / input_path).resolve()
-        from .pipelines import PIPELINE_INPUT, PIPELINE_TYPE
         # pipelines that give no input work on what their steps say
         is_pipeline_input = ctx.obj['input_type'] == PIPELINE_TYPE and input_path_absolute.name == PIPELINE_INPUT
         if not input_path_absolute.exists() and not is_pipeline_input:

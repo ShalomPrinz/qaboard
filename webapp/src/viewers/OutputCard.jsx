@@ -636,7 +636,7 @@ const OutputCard = memo(function OutputCard(props) {
         compact={compact}
         prefix={output_new.is_running && <StatusTag output={output_new} style={compact ? undefined : { marginRight: '5px' }}/>}
       />}
-      {is_pipeline(output_new) && <PipelineSteps key="pipeline-steps" output={output_new} viewable={viewable}/>}
+      {is_pipeline(output_new) && <PipelineSteps output={output_new} viewable={viewable}/>}
       {/* History shows cards as hover previews, without a logs view */}
       {output_new.is_failed && (no_header
         ? <Tag key="new-failed" intent={Intent.DANGER}>Failed</Tag>

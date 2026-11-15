@@ -44,8 +44,8 @@ export const analyze = (outputs, { aggregation = 'average' } = {}) => {
   const by_id = (a, b) => (typeof a.id === 'number' && typeof b.id === 'number' ? a.id - b.id : 0);
   const candidates = (outputs ?? []).filter(o => o && o.output_type !== 'optim_iteration');
   // A pipeline next to the runs it started isn't one more parameter set: its "parameters" are its steps
-  const started_by_pipelines = candidates.filter(o => !is_pipeline(o));
-  const runs = (started_by_pipelines.length > 0 ? started_by_pipelines : candidates).sort(by_id).map(o => ({ output: o, flat: flatten(o.params) }));
+  const non_pipelines = candidates.filter(o => !is_pipeline(o));
+  const runs = (non_pipelines.length > 0 ? non_pipelines : candidates).sort(by_id).map(o => ({ output: o, flat: flatten(o.params) }));
 
   // which parameters change
   const seen = new Map();

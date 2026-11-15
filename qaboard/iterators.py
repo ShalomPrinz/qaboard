@@ -304,6 +304,16 @@ def iter_inputs(
         continue
       if not new_batches:
         continue
+    except yaml.YAMLError as e:
+      # often a command with ": " or " #" in it: a short message, not a traceback
+      mark = getattr(e, 'problem_mark', None)
+      where = f"{batches_file}, line {mark.line + 1}" if mark else str(batches_file)
+      problem = getattr(e, 'problem', None) or str(e)
+      raise BatchError(
+        f'{where}: YAML can\'t read this ({problem}).\n'
+        '  In a command, ": " and " #" are YAML syntax: put the command on the next line, after ">-",\n'
+        '  or quote it. See https://samsung.github.io/qaboard/docs/pipelines#faq-yaml-colon'
+      )
     except Exception as e:
       click.secho(f"ERROR: Invalid YAML: {batches_file}", err=True)
       raise e
@@ -485,11 +495,13 @@ def iter_batch(batch: Dict, default_run_context: RunContext, qatools_config, def
     run_context.configurations = list(flatten(run_context.configurations))
     if 'steps' in batch:
       # Pipelines (qaboard/pipelines.py): their steps are carried by the runs' configurations
+      if batch.get('type', pipelines.PIPELINE_TYPE) != pipelines.PIPELINE_TYPE:
+        raise BatchError(f'The batch "{run_context.batch}" has steps, it must have type: pipeline (or no type), not "{batch["type"]}"', run_context.batch)
       try:
         run_context.configurations = [*run_context.configurations, *pipelines.steps_of(batch, run_context.batch)]
       except pipelines.PipelineError as e:
         raise BatchError(str(e), run_context.batch)
-      batch = {"type": pipelines.PIPELINE_TYPE, **{k: v for k, v in batch.items() if k != 'steps'}}
+      batch = {**{k: v for k, v in batch.items() if k != 'steps'}, "type": pipelines.PIPELINE_TYPE}
     if 'platform' in batch:
       run_context.platform = batch['platform']
     runner = run_context.job_options.get('type', 'local')
@@ -582,7 +594,9 @@ def iter_batch(batch: Dict, default_run_context: RunContext, qatools_config, def
             if matrix_run_context.configurations and not run_context_uses_default_config:
               matrix_run_context.configurations.append(matrix_config)
             else:
-              matrix_run_context.configurations = matrix_config
+              # a pipeline's steps are not default configurations: they stay
+              steps = [c for c in matrix_run_context.configurations if pipelines.is_step(c)]
+              matrix_run_context.configurations = [matrix_config, *steps] if steps else matrix_config
           for param, value in matrix.items():
             if param in ['configuration', 'configurations', 'configs', 'platform']:
               continue

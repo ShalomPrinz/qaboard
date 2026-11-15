@@ -40,6 +40,7 @@ from .config import commit_id, outputs_commit, artifacts_commit, root_qatools, a
 from .config import user, is_ci, on_windows, available_metrics
 from .metrics import split_metrics, resolve_definitions, write_definitions_file, with_default_direction
 from . import analytics
+from . import pipelines
 
 
 
@@ -107,7 +108,7 @@ def qa(ctx, platform, configurations, label, tuning, tuning_filepath, dryrun, sh
 
   ctx.obj['input_type'] = input_type
   # `qa doctor` says when the input type is unknown
-  known_type = input_type in ('default', 'pipeline') or input_type in ((config.get('inputs') or {}).get('types') or {})
+  known_type = input_type in ('default', pipelines.PIPELINE_TYPE) or input_type in ((config.get('inputs') or {}).get('types') or {})
   ctx.obj['inputs_settings'] = get_settings(input_type if known_type or ctx.invoked_subcommand != 'doctor' else 'default', config)
   ctx.obj['database'] = database if database else get_default_database(ctx.obj['inputs_settings'])
   # configuration singular is for backward compatibility to a time where there was a single str config
@@ -284,7 +285,6 @@ def run(ctx, input_path, output_path, keep_previous, no_postprocess, forwarded_a
           cwd = os.getcwd() 
 
           try:
-            from . import pipelines
             if pipelines.is_builtin(run_context.type, config):
               runtime_metrics = pipelines.run_pipeline(run_context)
             else:

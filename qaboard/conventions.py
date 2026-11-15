@@ -12,6 +12,7 @@ import yaml
 import click
 
 from .git import git_show
+from . import pipelines
 
 
 
@@ -34,10 +35,9 @@ def location_from_spec(spec: Union[str, Dict, os.PathLike], interpolation_vars: 
 def get_settings(inputs_type, config):
   config_inputs = config.get('inputs', {})  
   config_inputs_types = config_inputs.get('types', {})
-  if inputs_type == 'pipeline' and inputs_type not in config_inputs_types:
+  if inputs_type == pipelines.PIPELINE_TYPE and inputs_type not in config_inputs_types:
     # pipelines work without any setup: their input is a name, PIPELINE (qaboard/pipelines.py)
-    from .pipelines import default_settings
-    return default_settings(config_inputs)
+    return pipelines.default_settings(config_inputs)
   if inputs_type != 'default' and inputs_type not in config_inputs_types:
     error = f'Error: Unknown input type <{inputs_type}>. It is not defined in your qaboard.yaml'
     click.secho(error, fg='red', err=True, bold=True)

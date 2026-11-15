@@ -86,6 +86,8 @@ test('the steps of the definition, in both syntaxes', () => {
     { name: 'calibrate', type: 'run', status: 'unknown', commands: ['python calibrate.py'] },
     { name: 'step-4', type: 'run', status: 'unknown', commands: ['cd /tmp', 'ls'] },
   ]);
+  // like qaboard/pipelines.py: after the script, -2 for the same name
+  expect(defined_steps([{ batch: 'a' }, { batch: 'a' }, { run: 'python x/report.py --all' }]).map(s => s.name)).toEqual(['a', 'a-2', 'report']);
   expect(defined_steps(undefined)).toEqual([]);
 });
 
@@ -94,6 +96,12 @@ test('without pipeline.json, shows the steps of the definition', async () => {
   render({ ...output, configurations: [{ batch: 'images' }, { run: 'python report.py' }] }, {});
   await waitFor(() => expect(screen.getAllByTestId('pipeline-step')).toHaveLength(2));
   expect(screen.getAllByTestId('pipeline-step').map(s => s.dataset.status)).toEqual(['unknown', 'unknown']);
+});
+
+test('a pipeline waiting for its job has not started', async () => {
+  render({ ...output, is_pending: true, configurations: [{ batch: 'images' }] }, {});
+  await waitFor(() => expect(screen.getAllByTestId('pipeline-step')).toHaveLength(1));
+  expect(screen.getByTestId('pipeline-step').dataset.status).toBe('pending');
 });
 
 test('shows nothing without steps', async () => {

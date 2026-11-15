@@ -23,7 +23,6 @@ class TestSteps(unittest.TestCase):
   def test_steps_are_the_configurations_with_run_or_batch(self):
     steps = parse_steps(["base", {"noise": 1}, {"batch": "a"}, {"run": "echo ok"}])
     self.assertEqual([(s.index, s.kind) for s in steps], [(1, 'batch'), (2, 'run')])
-    self.assertEqual(pipelines.step_configurations(["base", {"noise": 1}, {"batch": "a"}]), ["base", {"noise": 1}])
 
   def test_options_next_to_the_step(self):
     step, = parse_steps([{"batch": "a", "label": "my-label", "use-cache": True, "allow_failure": True, "batches-file": "x.yaml"}])
@@ -51,11 +50,19 @@ class TestSteps(unittest.TestCase):
     with self.assertRaisesRegex(PipelineError, "can only have letters"):
       parse_steps([{"batch": "a", "name": "my step"}])
 
-  def test_unknown_options_are_ignored_with_a_warning(self):
+  def test_unknown_options(self):
+    # a typo would change what the step does: an error
+    with self.assertRaisesRegex(PipelineError, 'unknown option "use_cahce". Did you mean "use_cache"'):
+      parse_steps([{"batch": "a", "use_cahce": True}])
+    with self.assertRaisesRegex(PipelineError, 'Did you mean "label"'):
+      parse_steps([{"batch": ["a", {"lable": "x"}]}])
+    # others are ignored with a warning
     with mock.patch('click.secho') as secho:
-      step, = parse_steps([{"batch": "a", "lable": "typo"}])
+      step, = parse_steps([{"batch": "a", "owner": "me"}])
     self.assertEqual(step.options, {})
-    self.assertIn('unknown option "lable"', secho.call_args[0][0])
+    self.assertIn('unknown option "owner"', secho.call_args[0][0])
+    with self.assertRaisesRegex(PipelineError, 'both "run:" and "batch:"'):
+      parse_steps([{"batch": "a", "run": "x"}])
 
   def test_names(self):
     self.assertEqual(names([{"batch": "calibration"}]), ["calibration"])
@@ -95,6 +102,16 @@ class TestSteps(unittest.TestCase):
       validate([{"batch": "a", "database": "{steps.a.output_dir}"}])
     with self.assertRaisesRegex(PipelineError, 'no step is named "b"'):
       validate([{"batch": "a"}, {"batch": "c", "tuning": {"path": ["{steps.b.output_dir}/x"]}}])
+    # what follows the name too
+    with self.assertRaisesRegex(PipelineError, 'Did you mean "output_dirs"'):
+      validate([{"batch": "a"}, {"run": "x.py {steps.a.outputs_dirs}"}])
+    with self.assertRaisesRegex(PipelineError, '"calibrate" is a command'):
+      validate([{"run": "calibrate.py"}, {"run": "x.py {steps.calibrate.output_dirs}"}])
+    with self.assertRaisesRegex(PipelineError, 'needs what you want from these runs'):
+      validate([{"batch": "a"}, {"run": "x.py {steps.a.ok}"}])
+    with self.assertRaisesRegex(PipelineError, r'\{steps.a.ok.runs_file\}: "runs_file" is unknown here'):
+      validate([{"batch": "a"}, {"run": "x.py {steps.a.ok.runs_file}"}])
+    validate([{"batch": "a"}, {"run": "calibrate.py {steps.a.files[o.png]} {steps.a.ok.output_dirs:,}"}, {"run": "x {steps.calibrate.status}"}])
 
   def test_steps_of_a_batch(self):
     self.assertEqual(pipelines.steps_of({"inputs": []}), [])
@@ -164,6 +181,55 @@ class TestInterpolation(unittest.TestCase):
         interpolate(text, params)
 
 
+class TestRun(unittest.TestCase):
+  """Pipelines of commands, with a fake shell: what pipeline.json says when steps fail or are interrupted"""
+  def setUp(self):
+    self.tmp = Path(tempfile.mkdtemp(prefix='qa-pipeline-run-'))
+    self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+  def run_pipeline(self, configurations, run_command):
+    from qaboard.run import RunContext
+    context = RunContext(type='pipeline', input_path=self.tmp / 'PIPELINE', database=self.tmp, platform='linux',
+                         configurations=configurations, output_dir=self.tmp / 'pipeline')
+    with mock.patch.dict(os.environ, {"QA_BATCHES_FILES": "[]"}):
+      return pipelines.Pipeline(context, run_command=run_command).run(), context.output_dir
+
+  def state(self, output_dir):
+    return json.loads((output_dir / 'pipeline.json').read_text())
+
+  def test_commands_get_the_step_and_the_pipeline_folder(self):
+    seen = []
+    metrics, output_dir = self.run_pipeline([{"run": "first"}, {"name": "second", "run": "x"}], lambda command, cwd, env: seen.append((command, env['PIPELINE_STEP'], env['PIPELINE_OUTPUT_DIR'])) or 0)
+    self.assertEqual(seen, [('first', 'first', str(output_dir)), ('x', 'second', str(output_dir))])
+    self.assertEqual(metrics, {"is_failed": False})
+    self.assertEqual(self.state(output_dir)['status'], 'success')
+
+  def test_an_error_fails_the_step_and_says_why(self):
+    def run_command(command, cwd, env):
+      if command == 'broken':
+        raise OSError("No space left on device")
+      return 0
+    with mock.patch('click.secho'):
+      metrics, output_dir = self.run_pipeline([{"run": "broken"}, {"run": "after"}], run_command)
+    self.assertTrue(metrics['is_failed'])
+    state = self.state(output_dir)
+    self.assertEqual((state['status'], [s['status'] for s in state['steps']]), ('failed', ['failed', 'skipped']))
+    self.assertEqual(state['steps'][0]['error'], 'OSError: No space left on device')
+
+  def test_an_interrupted_pipeline_is_not_running_forever(self):
+    def run_command(command, cwd, env):
+      if command == 'long':
+        raise KeyboardInterrupt
+      return 0
+    with self.assertRaises(KeyboardInterrupt):
+      self.run_pipeline([{"run": "first"}, {"run": "long"}, {"run": "after"}], run_command)
+    state = self.state(self.tmp / 'pipeline')
+    self.assertEqual(state['status'], 'failed')
+    self.assertEqual([s['status'] for s in state['steps']], ['success', 'failed', 'skipped'])
+    self.assertEqual(state['steps'][1]['error'], 'Interrupted')
+    self.assertIn('ended_at', state)
+
+
 class TestEngine(unittest.TestCase):
   def test_engine(self):
     self.assertEqual(pipelines.engine({}, environ={}), 'builtin')
@@ -199,6 +265,25 @@ one-image:
   inputs: [cli_tests/a.jpg]
   database: .
 
+two-batches:
+  type: pipeline
+  steps:
+  - batch: [images, one-image]
+    label: pipeline-two-batches
+  - run: echo {steps.images+one-image.output_dirs} > {output_dir}/dirs.txt
+
+matrix-configs:
+  type: pipeline
+  matrix:
+    configs: [low, high]
+  steps:
+  - run: echo {configurations[0]} > {output_dir}/config.txt
+
+wrong-type:
+  type: images
+  steps:
+  - run: echo never
+
 my-pipeline:
   type: pipeline
   steps:
@@ -210,6 +295,7 @@ my-pipeline:
       python -c "import sys, json; json.dump(sys.argv[1:], open(sys.argv[1], 'w'))"
       {output_dir}/report.json {steps.images.runs_file} {steps.images.output_dirs}
   - batch: one-image
+    label: pipeline-one-image
     configs: ["{output_dir}/start.txt", {threshold: 3}]
   - run: >-
       echo '{"accuracy": 0.9}' > $PIPELINE_OUTPUT_DIR/metrics.json
@@ -255,6 +341,20 @@ with-inputs:
   steps:
   - run: echo {rel_input_path} > {output_dir}/input.txt
 
+typo-batch:
+  type: pipeline
+  steps:
+  - batch: imagez
+  - run: echo after > {output_dir}/after.txt
+
+parameter-typo:
+  type: pipeline
+  configs:
+  - threshold: 3
+  steps:
+  - run: >-
+      echo {treshold} '{"a": 1}' ${HOME} > {output_dir}/out.txt
+
 bad-reference:
   type: pipeline
   steps:
@@ -276,7 +376,7 @@ class TestPipelinesCli(unittest.TestCase):
   @classmethod
   def clean(cls):
     # local runs are saved in the project, under output/: other tests use it too, we remove what is ours
-    for label in ('pipeline-images', 'first-syntax-images', 'cached-images', 'entrypoint-engine'):
+    for label in ('pipeline-images', 'pipeline-one-image', 'pipeline-two-batches', 'first-syntax-images', 'cached-images', 'entrypoint-engine'):
       shutil.rmtree(cls.project_dir / 'output' / label, ignore_errors=True)
     for output_dir in cls.created:
       shutil.rmtree(output_dir.parent, ignore_errors=True)
@@ -363,6 +463,7 @@ class TestPipelinesCli(unittest.TestCase):
     # metrics.json in the pipeline's directory: the pipeline's metrics
     metrics = json.loads((output_dir / 'metrics.json').read_text())
     self.assertEqual((metrics['accuracy'], metrics['is_failed']), (0.9, False))
+    self.assertFalse([k for k in metrics if k.startswith('step ')])
 
   def test_first_syntax(self):
     (output_dir,), result = self.run_pipeline('first-syntax', expect_success=False)
@@ -391,6 +492,43 @@ class TestPipelinesCli(unittest.TestCase):
     output_dirs, result = self.run_pipeline('with-inputs')
     self.assertEqual(sorted((d / 'input.txt').read_text().strip() for d in output_dirs), ['cli_tests/a.jpg', 'cli_tests/b.jpg'])
 
+  def test_a_step_with_several_batches(self):
+    (output_dir,), result = self.run_pipeline('two-batches')
+    batches = json.loads((output_dir / 'batches.json').read_text())
+    # the key of the first implementation, and one per batch
+    self.assertEqual(sorted(batches), ['--batch "images" --batch "one-image"', 'images', 'one-image'])
+    self.assertEqual((len(batches['images']), len(batches['one-image'])), (3, 1))
+    self.assertEqual(len((output_dir / 'dirs.txt').read_text().split()), 4)
+
+  def test_matrix_of_configurations(self):
+    # the matrix's configurations replace the default ones, not the steps
+    output_dirs, result = self.run_pipeline('matrix-configs')
+    self.assertEqual(sorted((d / 'config.txt').read_text().strip() for d in output_dirs), ['high', 'low'])
+
+  def test_a_batch_without_runs_fails(self):
+    # often a typo in the batch's name
+    (output_dir,), result = self.run_pipeline('typo-batch', expect_success=False)
+    self.assertIn('imagez has no runs. Is the name of the batch right?', result.stdout + result.stderr)
+    self.assertFalse((output_dir / 'after.txt').exists())
+
+  def test_misspelled_parameters_are_left_with_a_warning(self):
+    (output_dir,), result = self.run_pipeline('parameter-typo')
+    self.assertIn('{treshold} is not a parameter or field', result.stdout + result.stderr)
+    self.assertNotIn('{a', result.stderr.split('{treshold}')[1].split('\n')[0])
+    self.assertEqual((output_dir / 'out.txt').read_text().split()[0], '{treshold}')
+
+  def test_the_end_of_the_log_says_what_happened(self):
+    (output_dir,), result = self.run_pipeline('failing', expect_success=False)
+    out = result.stdout + result.stderr
+    self.assertIn('Pipeline FAILED', out)
+    self.assertIn('To run the failed command again by hand:', out)
+    self.assertIn(f'PIPELINE_OUTPUT_DIR={output_dir} exit 1', out)
+
+  def test_steps_need_the_pipeline_type(self):
+    result = self.batch('wrong-type', '--list')
+    self.assertNotEqual(result.returncode, 0)
+    self.assertIn('must have type: pipeline', result.stdout + result.stderr)
+
   def test_cache(self):
     # `steps:` is enough to say it's a pipeline
     (output_dir,), result = self.run_pipeline('cached')
@@ -410,6 +548,7 @@ class TestPipelinesCli(unittest.TestCase):
 
   def test_tuning(self):
     result = self.qa('--tuning', '{"gain": 2}', 'batch', '--batches-file', str(self.batches_file), 'first-syntax')
+    self.assertIn('exit 3', result.stdout + result.stderr) # its step allowed to fail: the pipeline ran until the end
     listed = self.qa('--tuning', '{"gain": 2}', 'batch', '--batches-file', str(self.batches_file), 'first-syntax', '--list')
     output_dir = Path(json.loads(listed.stdout)[0]['output_dir'])
     self.created.add(output_dir)
