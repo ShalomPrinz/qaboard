@@ -1,0 +1,38 @@
+---
+id: pipelines-at-sirc
+title: Moving HW_ALG to QA-Board's pipelines
+sidebar_label: Pipelines in HW_ALG
+sidebar_position: 3
+description: HW_ALG keeps running pipelines with its own wrapper until a branch opts in. How to try QA-Board's pipelines, and what changes.
+---
+
+QA-Board now runs [pipelines](/docs/pipelines) itself. HW_ALG had its own pipelines first, in its wrapper for `qa`:
+projects with **HW_ALG** in their name keep using the wrapper's pipelines until they opt in. Old branches keep working
+as they are, so you can move one branch at a time.
+
+## Try it on one pipeline
+Without changing anything in the repository:
+
+```bash
+QABOARD_PIPELINES_ENGINE=builtin qa --share batch --runner=local my_pipeline
+```
+
+Your pipeline's definition and scripts don't change: `configurations` with `run` and `batch` steps,
+`$PIPELINE_OUTPUT_DIR`, *batches.json* and *tuning.json* work the same. You get the steps on the pipeline's card in the
+web app, and `{steps.<name>.output_dirs}` in your commands ([use the results of a batch](/docs/pipelines#steps)).
+
+## Move a branch
+Add to the product's *qaboard.yaml*:
+
+```yaml title="qaboard.yaml"
+pipelines:
+  engine: builtin
+```
+
+From that commit on, CI runs the pipelines with QA-Board. Branches without it keep the wrapper's.
+
+## What changes
+See [what changes when you move to QA-Board's pipelines](/docs/pipelines#own-pipelines). For HW_ALG:
+- Commands with braces that aren't fields, like JSON or `awk '{print $1}'`, now get their other `{fields}` replaced.
+- Mistakes in a pipeline's definition stop `qa batch` before anything runs.
+- `run: ... ; runner: windows` steps work as before.
