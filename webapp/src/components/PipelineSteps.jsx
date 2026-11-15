@@ -17,6 +17,8 @@ const statuses = {
   failed: { icon: 'error', intent: Intent.DANGER, label: 'Failed' },
   running: { label: 'Running' },
   pending: { icon: 'circle', label: 'Not started' },
+  // pipelines done by the project's own code, or from before pipeline.json: we only know their definition
+  unknown: { icon: 'circle', label: 'Status unknown: this pipeline doesn\'t report its steps' },
   skipped: { icon: 'disable', label: 'Skipped: an earlier step failed' },
 };
 
@@ -110,6 +112,7 @@ const StepDetails = ({ step, status }) => {
     {step.error && <p style={{ margin: '8px 0 0', color: 'var(--qa-text-danger)' }}>{step.error}</p>}
     {step.returncode !== undefined && step.returncode !== 0 && <p style={{ margin: '8px 0 0' }}>The command exited with the code {step.returncode}: see the pipeline's log.</p>}
     {(step.command || step.commands) && <pre className={Classes.CODE_BLOCK}>{step.command ?? step.commands.join('\n')}</pre>}
+    {status === 'unknown' && <p className={Classes.TEXT_MUTED} style={{ margin: '8px 0 0' }}>This pipeline doesn't report how its steps went: see its log.</p>}
     {step.type === 'batch' && step.label !== undefined && step.runs > 0 && <Button
       size="small"
       icon="arrow-right"
@@ -136,7 +139,27 @@ const Step = ({ step, is_over }) => {
 };
 
 
-// Pipelines from before pipeline.json (or whose project does them itself) show nothing
+// The steps a pipeline's configurations define: `{batch: ...}` or `{run: ...}`, with their options next to them
+// or, in the first syntax, as mappings in their list. Named like qaboard/pipelines.py does when it's simple.
+export const defined_steps = configurations => (Array.isArray(configurations) ? configurations : [])
+  .filter(c => c && typeof c === 'object' && !Array.isArray(c) && ('run' in c || 'batch' in c))
+  .map((c, index) => {
+    const type = 'run' in c ? 'run' : 'batch';
+    const items = Array.isArray(c[type]) ? c[type] : [c[type]];
+    const values = items.filter(i => i !== null && typeof i !== 'object').map(String);
+    const options = Object.assign({}, ...items.filter(i => i && typeof i === 'object'), c);
+    const name = typeof options.name === 'string' ? options.name
+      : type === 'batch' && values.length ? values.join('+')
+      : `step-${index + 1}`;
+    return {
+      name, type, status: 'unknown',
+      ...(type === 'batch' ? { batches: values } : { commands: values }),
+      ...(options.allow_failure || options['allow-failure'] ? { allow_failure: true } : {}),
+    };
+  });
+
+
+// Without pipeline.json (pipelines done by the project's own code, or from before the file), the steps of the definition
 export const PipelineSteps = ({ output, viewable = true }) => {
   const is_over = !output.is_pending && !output.is_running;
   const url = output.output_dir_url ? `${output.output_dir_url}/pipeline.json` : undefined;
@@ -147,7 +170,8 @@ export const PipelineSteps = ({ output, viewable = true }) => {
     // the pipeline updates the file after each step
     refetchInterval: is_over ? false : 5000,
   });
-  const steps = Array.isArray(data?.steps) ? data.steps : [];
+  const reported = Array.isArray(data?.steps) ? data.steps : [];
+  const steps = reported.length > 0 ? reported : defined_steps(output.configurations);
   if (steps.length === 0) return null;
   return <Steps data-testid="pipeline-steps" aria-label="Pipeline steps">
     {steps.map((step, index) => <span key={step.name ?? index} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

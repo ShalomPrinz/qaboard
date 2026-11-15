@@ -72,14 +72,34 @@ class PipelineError(Exception):
   """A mistake in the definition of a pipeline, with a message for the people who wrote it."""
 
 
+_ENGINES = {'builtin': 'builtin', 'qaboard': 'builtin', 'entrypoint': 'entrypoint', 'custom': 'entrypoint', 'legacy': 'entrypoint'}
+_warned_engines: set = set()
+
+
+def default_engine(config: Optional[Dict]) -> str:
+  """
+  FIXME: SIRC-specific. HW_ALG's wrapper does its pipelines in its own run(), and its old branches keep running in CI:
+  its projects keep doing them until they opt in with `pipelines.engine: builtin`. Remove once HW_ALG migrated.
+  """
+  name = str(((config or {}).get('project') or {}).get('name') or '')
+  return 'entrypoint' if 'hw_alg' in name.lower() else 'builtin'
+
+
 def engine(config: Optional[Dict], environ=os.environ) -> str:
   """
-  Who runs the runs of type `pipeline`: 'builtin' (default, this module) or 'entrypoint' (the project's run()
-  function, for the projects that had their own pipelines before they were part of QA-Board).
-  $QABOARD_PIPELINES_ENGINE, else `pipelines.engine` in qaboard.yaml.
+  Who runs the runs of type `pipeline`: 'builtin' (this module) or 'entrypoint' (the project's run() function, for
+  the projects that had their own pipelines before they were part of QA-Board).
+  $QABOARD_PIPELINES_ENGINE, else `pipelines.engine` in qaboard.yaml, else the default (builtin).
   """
-  value = environ.get('QABOARD_PIPELINES_ENGINE') or ((config or {}).get('pipelines') or {}).get('engine') or 'builtin'
-  return 'entrypoint' if str(value).lower() in ('entrypoint', 'custom', 'legacy') else 'builtin'
+  value = environ.get('QABOARD_PIPELINES_ENGINE') or ((config or {}).get('pipelines') or {}).get('engine')
+  if value:
+    known = _ENGINES.get(str(value).strip().lower())
+    if known:
+      return known
+    if value not in _warned_engines: # a typo must not change who runs the pipelines
+      _warned_engines.add(value)
+      click.secho(f'WARNING: unknown pipelines engine "{value}", expected "builtin" or "entrypoint". Using the default.', fg='yellow', err=True)
+  return default_engine(config)
 
 
 def is_builtin(input_type: Optional[str], config: Optional[Dict]) -> bool:

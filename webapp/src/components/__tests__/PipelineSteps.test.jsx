@@ -3,7 +3,7 @@ import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 
 import { renderWithProviders } from '../../test-utils';
-import { PipelineSteps, duration_label, runs_summary } from '../PipelineSteps';
+import { PipelineSteps, defined_steps, duration_label, runs_summary } from '../PipelineSteps';
 
 const pipeline = {
   version: 1,
@@ -73,9 +73,31 @@ test('a batch step links to its runs', async () => {
   expect(await screen.findByRole('button', { name: /Show its 12 runs/ })).toBeInTheDocument();
 });
 
-test('shows nothing without pipeline.json', async () => {
+test('the steps of the definition, in both syntaxes', () => {
+  expect(defined_steps([
+    'base', { gain: 2 },
+    { batch: 'images', label: 'x' },
+    { batch: ['a', { label: 'y' }, 'b', { 'allow-failure': true }] },
+    { name: 'calibrate', run: 'python calibrate.py' },
+    { run: ['cd /tmp', 'ls'] },
+  ])).toEqual([
+    { name: 'images', type: 'batch', status: 'unknown', batches: ['images'] },
+    { name: 'a+b', type: 'batch', status: 'unknown', batches: ['a', 'b'], allow_failure: true },
+    { name: 'calibrate', type: 'run', status: 'unknown', commands: ['python calibrate.py'] },
+    { name: 'step-4', type: 'run', status: 'unknown', commands: ['cd /tmp', 'ls'] },
+  ]);
+  expect(defined_steps(undefined)).toEqual([]);
+});
+
+test('without pipeline.json, shows the steps of the definition', async () => {
   // pipelines from before the file, or done by the project's own code
-  const { container } = render(output, {});
+  render({ ...output, configurations: [{ batch: 'images' }, { run: 'python report.py' }] }, {});
+  await waitFor(() => expect(screen.getAllByTestId('pipeline-step')).toHaveLength(2));
+  expect(screen.getAllByTestId('pipeline-step').map(s => s.dataset.status)).toEqual(['unknown', 'unknown']);
+});
+
+test('shows nothing without steps', async () => {
+  const { container } = render({ ...output, configurations: ['base'] }, {});
   await waitFor(() => expect(fetch).toHaveBeenCalled());
   expect(container.querySelector('[data-testid="pipeline-steps"]')).toBeNull();
 });

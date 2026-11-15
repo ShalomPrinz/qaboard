@@ -170,6 +170,19 @@ class TestEngine(unittest.TestCase):
     self.assertEqual(pipelines.engine({"pipelines": {"engine": "entrypoint"}}, environ={}), 'entrypoint')
     self.assertEqual(pipelines.engine({"pipelines": {"engine": "entrypoint"}}, environ={"QABOARD_PIPELINES_ENGINE": "builtin"}), 'builtin')
     self.assertEqual(pipelines.engine({}, environ={"QABOARD_PIPELINES_ENGINE": "entrypoint"}), 'entrypoint')
+    with mock.patch('click.secho') as secho:
+      self.assertEqual(pipelines.engine({"pipelines": {"engine": "buildin"}}, environ={}), 'builtin')
+    self.assertIn('unknown pipelines engine "buildin"', secho.call_args[0][0])
+
+  def test_hw_alg_keeps_its_own_pipelines_until_it_opts_in(self):
+    # its old branches keep running in CI, with their qaboard.yaml
+    hw_alg = {"project": {"name": "CDE-Users/HW_ALG/CIS"}}
+    self.assertEqual(pipelines.engine(hw_alg, environ={}), 'entrypoint')
+    self.assertEqual(pipelines.engine({**hw_alg, "pipelines": {"engine": "builtin"}}, environ={}), 'builtin')
+    self.assertEqual(pipelines.engine(hw_alg, environ={"QABOARD_PIPELINES_ENGINE": "builtin"}), 'builtin')
+    with mock.patch('click.secho'):
+      self.assertEqual(pipelines.engine({**hw_alg, "pipelines": {"engine": "typo"}}, environ={}), 'entrypoint')
+    self.assertEqual(pipelines.engine({"project": {"name": "group/other"}}, environ={}), 'builtin')
     with mock.patch.dict(os.environ, {"QABOARD_PIPELINES_ENGINE": ""}):
       self.assertTrue(pipelines.is_builtin('pipeline', {}))
       self.assertFalse(pipelines.is_builtin('default', {}))
