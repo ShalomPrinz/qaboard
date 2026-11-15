@@ -111,6 +111,18 @@ class TestSchemas(unittest.TestCase):
       'b': {'inputs': {'d.jpg': None, 'e.jpg': ['tuned']}, 'type': 'movie', 'globs': '*.mp4'},
       'c': {'inputs': 'folder/*.jpg', 'only': {'iso': '>=800'}},
       'aliases': {'nightly': ['a', 'b'], 'single': 'c'},
+      'pipeline': {
+        'type': 'pipeline',
+        'matrix': {'gain': [1, 2]},
+        'steps': [
+          {'batch': 'a', 'label': 'calibration', 'use-cache': True, 'tuning': {'gain': '${matrix.gain}'}},
+          {'name': 'calibrate', 'run': 'python calibrate.py {steps.a.output_dirs}', 'allow_failure': True},
+          {'run': ['cd /tmp', 'ls']},
+          {'batch': ['b', 'c'], 'configs': ['{output_dir}/calibration.yaml'], 'database': '{output_dir}/images', 'batches-file': '{output_dir}/batches.yaml'},
+        ],
+      },
+      # the first syntax: steps among the configurations, their options in the list
+      'old-pipeline': {'type': 'pipeline', 'configurations': [{'batch': ['a', {'label': 'x'}]}, {'run': 'echo ok'}]},
     }
     self.assertEqual(self.errors('batches.schema.json', valid), [])
     self.assertEqual(self.errors('batches.schema.json', None), [])
@@ -122,6 +134,9 @@ class TestSchemas(unittest.TestCase):
       {'a': {'lsf': {'max_memmory': 1}}},
       {'a': ['a.jpg']},
       {'aliases': {'nightly': {'a': 1}}},
+      {'a': {'steps': {'first': {'batch': 'b'}}}},
+      {'a': {'steps': [{'batch': 'b', 'lable': 'typo'}]}},
+      {'a': {'steps': ['python report.py']}},
     ]
     for value in invalid:
       with self.subTest(value):

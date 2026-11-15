@@ -20,6 +20,14 @@ describe('sorted_ids', () => {
     expect(sort(runs, 'test_input_path', -1)).toEqual([1, 2, 3]);
   });
 
+  test('pipelines come first, whatever the order', () => {
+    const runs = [run(1, 'a.png', { metrics: { psnr: 30 } }), run(2, 'PIPELINE', { batch: 'calibration', metrics: { psnr: 10 } }), run(3, 'b.png', { metrics: { psnr: 40 } }), run(4, 'x', { output_type: 'pipeline' })];
+    expect(sort(runs, 'test_input_path')).toEqual([2, 4, 1, 3]);
+    expect(sort(runs, 'test_input_path', -1)).toEqual([4, 2, 3, 1]);
+    expect(sort(runs, 'psnr', -1)).toEqual([2, 4, 3, 1]);
+    expect(sort(runs, 'psnr', 1)).toEqual([2, 4, 1, 3]);
+  });
+
   test('sorts by batch, then by name', () => {
     const runs = [run(1, 'b.png', { batch: 'night' }), run(2, 'a.png', { batch: 'night' }), run(3, 'b.png', { batch: 'day' }), run(4, 'a.png', { batch: 'day' })];
     expect(sort(runs, 'data.batch')).toEqual([4, 3, 2, 1]);

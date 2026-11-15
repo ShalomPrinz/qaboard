@@ -1,0 +1,636 @@
+---
+id: pipelines
+title: "Pipelines: run batches and scripts in order"
+sidebar_label: Pipelines
+description: Run a batch, then a script that uses its results, then another batch. Calibration, reports over a whole batch, generated inputs, with recipes and answers to common questions.
+---
+
+A pipeline runs **steps** one after the other. A step is either a **batch** of runs, or a **command** (a script). Use
+one when a batch is not enough:
+
+- run a batch, then a script that makes **one plot or one metric from all its results**;
+- run images, **calibrate** from the results, then evaluate with the calibration;
+- **generate inputs** with a script, then run on them.
+
+```yaml title="qa/batches.yaml"
+my-pipeline:
+  type: pipeline
+  steps:
+  - batch: my-images                                       # 1. run a batch
+  - run: python report.py {steps.my-images.output_dirs}    # 2. then a script, on the batch's results
+```
+
+```bash
+qa batch my-pipeline
+```
+
+## Your first pipeline {#first-pipeline}
+You need a batch that already works, here `my-images`. See [Batches of inputs](/docs/batches-running-on-multiple-inputs)
+if you don't have one yet.
+
+1. **Write a script that takes folders as arguments.** It knows nothing about QA-Board, so you can also run it by hand:
+
+   ```python title="report.py"
+   import sys
+
+   output_dirs = sys.argv[1:]
+   print(f"Got {len(output_dirs)} folders:")
+   for output_dir in output_dirs:
+       print(output_dir)
+   ```
+
+2. **Define the pipeline** in your batches file, next to your batches:
+
+   ```yaml title="qa/batches.yaml"
+   my-images:
+     inputs:
+     - images/A.jpg
+     - images/B.jpg
+
+   my-pipeline:
+     type: pipeline
+     steps:
+     - batch: my-images
+     - run: python report.py {steps.my-images.output_dirs}
+   ```
+
+   `{steps.my-images.output_dirs}` is replaced by the folders where the runs of `my-images` saved their files.
+
+3. **Run it on your computer**, to see what happens:
+
+   ```bash
+   qa batch --runner=local my-pipeline
+   ```
+
+   The steps run in order, and each one prints the command it runs:
+
+   ```text
+   [Step 1/2] my-images: {'batch': 'my-images'}
+   $ qa batch "my-images" --action-on-existing=run --action-on-pending=wait
+   ...
+   [Step 2/2] report: {'run': 'python report.py {steps.my-images.output_dirs}'}
+   $ python report.py /path/to/output/A /path/to/output/B
+   Got 2 folders:
+   /path/to/output/A
+   /path/to/output/B
+   ```
+
+4. **See it in the web app**: add `--share`.
+
+   ```bash
+   qa --share batch --runner=local my-pipeline
+   ```
+
+   The pipeline is the first card of the page, with its steps. See [In the web app](#web-app).
+
+If a step fails, the pipeline stops there and is failed. The steps after it don't run.
+
+## Use the results of a batch in a command {#steps}
+Commands refer to an earlier step by its **name**. A batch step is named after its batch: the step `batch: my-images`
+is `my-images`.
+
+| You write | Your command gets |
+|---|---|
+| `{steps.my-images.output_dirs}` | The output folder of every run, separated by spaces |
+| `{steps.my-images.files[output.png]}` | The file `output.png` of every run: `<folder 1>/output.png <folder 2>/output.png ...` |
+| `{steps.my-images.runs_file}` | A JSON file that lists the runs, with their input, folder, status and metrics. [Read it in a script](#runs-file) |
+| `{steps.my-images.output_dir}` | The output folder, for a batch with a single run |
+| `{steps.my-images.ok.output_dirs}` | Only the folders of the runs that succeeded |
+| `{output_dir}` | The pipeline's own folder: [save your files there](#output-dir) |
+
+Paths with spaces are quoted for you.
+
+:::tip
+With hundreds of runs, a command line gets too long, above all on Windows. Give your script `{steps.<name>.runs_file}`
+instead: one path, whatever the number of runs.
+:::
+
+<details>
+<summary>Everything commands can use</summary>
+
+**About an earlier batch step** (`{steps.<name>...}`):
+
+| | |
+|---|---|
+| `output_dirs` | The output folder of every run |
+| `files[<path>]` | A file in every output folder. The path can have folders: `files[debug/hist.png]` |
+| `output_dir` | The output folder, when the step has one run. An error otherwise |
+| `input_paths` | The input of every run |
+| `runs_file` | The JSON file that lists the runs |
+| `ok.output_dirs`, `ok.files[...]`, `ok.input_paths` | The same, for the runs that succeeded |
+| `failed.output_dirs`... | The same, for the runs that failed |
+| `label` | The label of the step's runs in the web app |
+
+Lists are separated by spaces. To separate them with something else, add it after a colon:
+`{steps.my-images.output_dirs:,}` gives `<folder 1>,<folder 2>`.
+
+When a step's name has characters like dots, write `{steps[my.name].output_dirs}`, or better,
+[give the step a name](#names).
+
+**About the pipeline**:
+
+| | |
+|---|---|
+| `{output_dir}` | The pipeline's folder |
+| `{batch_label}` | The label of the pipeline's batch |
+| `{my_parameter}` | A parameter from the pipeline's `configs` or from [tuning](#tuning): with `configs: [{noise: 0.5}]`, `{noise}` is `0.5` |
+| `{configurations[0]}` | The pipeline's first configuration |
+| `$MY_VARIABLE` | An environment variable. See [the ones pipelines set](#environment-variables) |
+
+Text in braces that isn't one of these is left as you wrote it, so JSON and shell code work in commands.
+
+</details>
+
+### Name your steps {#names}
+Steps get a name without you doing anything:
+
+- a batch step is named after its batch: `batch: my-images` is `my-images`;
+- a run step is named after its script: `run: python scripts/calibrate.py --fast` is `calibrate`;
+- the others are named after their position: `step-3`.
+
+When two steps would have the same name, the second gets `-2`. To choose, add `name:`. It's worth it for the steps
+that later steps refer to:
+
+```yaml title="qa/batches.yaml"
+my-pipeline:
+  type: pipeline
+  steps:
+  - name: before
+    batch: my-images
+  - run: python calibrate.py {steps.before.output_dirs}
+  - name: after
+    batch: my-images
+    configs: ["{output_dir}/calibration.yaml"]
+  - run: python compare.py --before {steps.before.runs_file} --after {steps.after.runs_file}
+```
+
+`qa batch` checks the names before it starts anything: a typo in `{steps.befor.output_dirs}` is an error right away,
+with the list of the steps you can use.
+
+### Save your files in the pipeline's folder {#output-dir}
+Scripts should write their files under `{output_dir}`, the pipeline's own folder. Then:
+
+- the files show in the web app, on the pipeline's card and in **Output Files**;
+- later steps find them at the same path;
+- QA-Board manages them like other results.
+
+```yaml
+- run: python make_plot.py {steps.my-images.output_dirs} --output {output_dir}/summary.png
+```
+
+## Read the runs in a Python script {#runs-file}
+Folders are enough for many scripts. When yours needs to know which input a folder is for, whether the run failed, or
+its metrics, give it the **runs file**:
+
+```yaml
+- run: python report.py {steps.my-images.runs_file}
+```
+
+```python title="report.py"
+import sys
+import json
+
+with open(sys.argv[1]) as f:
+    runs = json.load(f)   # a list, one item per run
+
+for run in runs:
+    if run["is_failed"]:
+        print("skipping", run["input"])
+        continue
+    print(run["input"], run["output_dir"], run["metrics"])
+```
+
+The file is a list. Each run looks like:
+
+```json
+{
+  "batch": "my-images",
+  "input": "images/A.jpg",
+  "input_path": "/mnt/database/images/A.jpg",
+  "database": "/mnt/database",
+  "configurations": ["base"],
+  "extra_parameters": {},
+  "output_dir": "/mnt/qaboard/.../images-A",
+  "is_failed": false,
+  "is_cached": false,
+  "metrics": {"psnr": 31.2, "is_failed": false}
+}
+```
+
+With pandas, `pd.json_normalize(runs)` makes a table with one column per metric (`metrics.psnr`).
+
+:::tip
+To work on the script without the pipeline, run it on results that exist: `qa runs "<address of a page of the web
+app>" --json > runs.json` writes a list with the same `input`, `output_dir`, `is_failed` and `metrics`.
+:::
+
+## Recipes {#recipes}
+
+### One plot or one metric for a whole batch {#recipe-report}
+The script reads every run and writes a plot and the pipeline's metrics.
+
+```yaml title="qa/batches.yaml"
+quality-report:
+  type: pipeline
+  steps:
+  - batch: my-images
+  - run: python report.py {steps.my-images.runs_file} {output_dir}
+```
+
+```python title="report.py"
+import sys
+import json
+from pathlib import Path
+
+runs = json.load(open(sys.argv[1]))
+output_dir = Path(sys.argv[2])
+
+values = [run["metrics"]["psnr"] for run in runs if not run["is_failed"]]
+
+# metrics.json in the pipeline's folder: the pipeline's metrics
+metrics = {"average_psnr": sum(values) / len(values), "worst_psnr": min(values)}
+(output_dir / "metrics.json").write_text(json.dumps(metrics))
+```
+
+The metrics show on the pipeline's card, in the tables and in the history, like the metrics of any run
+([metrics](/docs/computing-quantitative-metrics)). Files like `{output_dir}/summary.png` show with the
+[visualizations](/docs/visualizations) your project defines.
+
+### Calibrate, then evaluate with the calibration {#recipe-calibration}
+```yaml title="qa/batches.yaml"
+calibration:
+  type: pipeline
+  steps:
+  - batch: calibration-images
+  - run: python calibrate.py {steps.calibration-images.output_dirs} --output {output_dir}/calibration.yaml
+  - batch: evaluation-images
+    configs: ["{output_dir}/calibration.yaml"]     # added after the batch's own configurations
+  - run: python report.py {steps.evaluation-images.runs_file} {output_dir}
+```
+
+`configs` on a batch step adds configurations after the ones the batch defines. Here, the runs of
+`evaluation-images` get `[<their configurations>, /path/to/pipeline/calibration.yaml]`. Your `run()` function decides
+what a configuration that is a path means ([configurations](/docs/specifying-configurations)).
+
+### Generate inputs, then run on them {#recipe-generated-inputs}
+The script writes images in the pipeline's folder, and the batch looks for its inputs there with `database`:
+
+```yaml title="qa/batches.yaml"
+dark-images:
+  type: pipeline
+  steps:
+  - run: python generate_dark_images.py --output {output_dir}/generated
+  - batch: dark-tests
+    database: "{output_dir}/generated"
+  - run: python report.py {steps.dark-tests.runs_file} {output_dir}
+
+dark-tests:
+  inputs:
+  - "*.raw"
+```
+
+`database` applies when the batch doesn't set its own.
+
+### Generate a batch, then run it {#recipe-generated-batch}
+A script can write a whole batches file, for instance a list of inputs it finds, or a
+[matrix](/docs/batches-advanced#matrix-batches) whose size depends on a parameter:
+
+```yaml title="qa/batches.yaml"
+noise-stability:
+  type: pipeline
+  configs:
+  - seeds: 20
+  steps:
+  - run: python make_batch.py --seeds {seeds} --output {output_dir}/generated.yaml
+  - batch: noise-seeds
+    batches-file: "{output_dir}/generated.yaml"
+  - run: python report.py {steps.noise-seeds.runs_file} {output_dir}
+```
+
+```python title="make_batch.py"
+import argparse
+import yaml
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--seeds", type=int)
+parser.add_argument("--output")
+args = parser.parse_args()
+
+batches = {
+    "noise-seeds": {
+        "inputs": ["images/A.jpg"],
+        "matrix": {"seed": list(range(args.seeds))},
+        "configs": ["base", {"noise_seed": "${matrix.seed}"}],
+    }
+}
+with open(args.output, "w") as f:
+    yaml.dump(batches, f)
+```
+
+### Work on a script without running the batch again {#recipe-cache}
+While you write `report.py`, you don't want to wait for the batch each time. `use-cache` skips the runs that already
+succeeded:
+
+```yaml title="qa/batches.yaml"
+quality-report:
+  type: pipeline
+  steps:
+  - batch: my-images
+    use-cache: true
+  - run: python report.py {steps.my-images.runs_file} {output_dir}
+```
+
+The runs that failed, and the new ones, still run. A run is "the same" when it has the same commit, label, input,
+configurations and tuning parameters: after you change the code and commit, everything runs again.
+
+Without `use-cache`, a batch step runs all its runs every time.
+
+### Use the results of another commit {#recipe-commit}
+`commit` uses results that QA-Board already has for a commit, and runs nothing:
+
+```yaml
+steps:
+- batch: calibration-images
+  commit: 1234abcdef      # its results must exist in QA-Board
+  label: my-experiment    # where they are; by default the pipeline's label
+- run: python calibrate.py {steps.calibration-images.output_dirs}
+```
+
+### Keep big batches out of the way {#recipe-label}
+By default, the runs of a batch step show in the web app with the pipeline, under the same label. When a batch has
+hundreds of runs, give it its own label: the pipeline stays easy to find, and its step links to the runs.
+
+```yaml
+steps:
+- batch: my-images
+  label: my-pipeline-images     # like qa --label my-pipeline-images batch my-images
+```
+
+### Continue when a step fails {#recipe-allow-failure}
+```yaml
+steps:
+- batch: unstable-batch
+  allow_failure: true
+- run: python report.py {steps.unstable-batch.ok.output_dirs}
+```
+
+The next steps run, and the pipeline is still marked as failed, so you know something went wrong. `ok.output_dirs`
+keeps the runs that succeeded.
+
+### Several commands in a step {#recipe-commands}
+A list of commands runs in order, as one step. It stops at the first that fails:
+
+```yaml
+steps:
+- name: prepare
+  run:
+  - mkdir -p {output_dir}/tmp
+  - python prepare.py --output {output_dir}/tmp
+```
+
+### Run the pipeline for several values {#recipe-matrix}
+A [matrix](/docs/batches-advanced#matrix-batches) starts one pipeline per value:
+
+```yaml title="qa/batches.yaml"
+calibration:
+  type: pipeline
+  matrix:
+    power: [low, high]
+  steps:
+  - batch: calibration-images
+    label: calibration-${matrix.power}
+    tuning: {power_mode: "${matrix.power}"}
+  - run: python calibrate.py {steps.calibration-images.output_dirs} --mode ${matrix.power}
+```
+
+## In the web app {#web-app}
+With `qa --share`, or in CI, the pipeline shows on its commit's page:
+
+- **Pipelines come first**, before the other runs of the batch, however you sort them.
+- **The card shows the steps** in order. Each has its status, how long it took, and for a batch its number of runs,
+  how many failed and how many were reused. The card updates while the pipeline runs.
+- **Click a step** for the command it ran. For a batch, **Show its runs** opens them.
+- The card shows the pipeline's files, with your project's visualizations, and its metrics.
+- The pipeline's log has the output of every command: open **Logs**.
+
+## Tuning with pipelines {#tuning}
+You can start a pipeline from **Run Tests / Tuning** in the web app, or with `qa --tuning`, with parameters
+([tuning](/docs/user-guide/tuning)):
+
+- **Batch steps get the parameters**, like `qa --tuning '{...}' batch my-images`. Add `tuning: false` to a step that
+  must not get them, or `tuning: {key: value}` to add your own.
+- **Commands** can use a parameter as `{my_parameter}`, or read them all from `{output_dir}/tuning.json`.
+
+**Tuning Analysis** compares the runs of a batch. When a pipeline and the runs of its steps have the same label, it
+compares those runs, not the pipeline. To compare the metrics the pipelines wrote in `metrics.json`, give the batch
+steps [their own label](#recipe-label): the pipelines are then alone in their batch.
+
+## Find what went wrong {#debug}
+1. **Run it on your computer**: `qa batch --runner=local my-pipeline`. The pipeline's steps run in your terminal. To
+   also run the batches' runs on your computer, set `QA_BATCH_RUNNER=local` first.
+2. **Read the line that starts with `$`**: it's the exact command a step ran, with the folders filled in. Copy it and
+   run it by hand.
+3. **Look in the pipeline's folder**, printed as `Outputs:` at the start. *pipeline.json* has the status and the
+   command of each step, *log.txt* the output.
+4. **Check the definition without running**: `qa batch my-pipeline --list` fails right away on a mistake in the steps.
+
+## Questions {#faq}
+
+### YAML says "mapping values are not allowed here" {#faq-yaml-colon}
+Your command has a colon followed by a space (`: `), or a `#`. YAML reads them as its own syntax. Start the command on
+the next line, after `>-`:
+
+```yaml
+- run: >-
+    python report.py --title "Results: all images" {steps.my-images.output_dirs}
+```
+
+Everything indented under `>-` is one command, and you can break long commands over several lines.
+
+### Text in braces is not replaced {#faq-braces}
+`{something}` is replaced when it's the result of a step, a parameter of the pipeline, or a value from the table in
+[everything commands can use](#steps). Otherwise it stays as you wrote it: check the spelling. For a parameter, check
+that it's in the pipeline's `configs`, not in the batch's.
+
+### "no step is named ..." {#faq-no-step}
+`{steps.<name>...}` must use the name of a step **before** the one that uses it. The error lists the names you can
+use. If the step you want is a command, it has no runs: use the files it wrote, like `{output_dir}/calibration.yaml`.
+
+### Where do my commands run? {#faq-cwd}
+In the folder you started `qa` from, on the machine that runs the pipeline. Use `{output_dir}` for the files you
+write, and paths relative to your project for your scripts.
+
+### Do steps run in parallel? {#faq-parallel}
+Steps run one after the other, because each can use the results of the ones before. The runs **inside** a batch step
+run in parallel, on the batch's [runner](/docs/runners).
+
+### Where does the pipeline itself run? {#faq-runner}
+The pipeline is one run, sent to your default runner like any run. From there it starts its batches with `qa batch`,
+so that machine must be able to start runs. If it can't, for instance in a container without access to your cluster,
+run the pipeline where you start it:
+
+```yaml
+my-pipeline:
+  type: pipeline
+  runner: local
+  steps: ...
+```
+
+### Can a step run another pipeline? {#faq-nested}
+Yes: `batch: other-pipeline` runs it, and `{steps.other-pipeline.files[summary.png]}` is the file it wrote.
+
+### Can I refer to a step by its number? {#faq-number}
+No, numbers change when you add a step. [Name the step](#names).
+
+### How do I get a metric on the pipeline? {#faq-metrics}
+Write `{output_dir}/metrics.json` from a command, like in [the first recipe](#recipe-report). QA-Board adds
+`is_failed` itself.
+
+### The steps are all in `configurations`, without `steps:` {#faq-first-syntax}
+It's the first way pipelines were written, and it still works. See [the first syntax](#first-syntax).
+
+## Reference {#reference}
+
+<details>
+<summary>Every option of a step</summary>
+
+| Option | Steps | |
+|---|---|---|
+| `batch` | | The batch to run, or a list of batches run together |
+| `run` | | The command to run, or a list of commands |
+| `name` | all | How later steps refer to the step: letters, digits, `-` and `_` |
+| `allow_failure` | all | `true`: continue with the next step when this one fails |
+| `label` | batch | The label of the step's runs in the web app. By default the pipeline's. `CI` is the CI's label |
+| `configs` | batch | Configurations added after the batch's own. They are passed as tuning parameters, and show as such |
+| `tuning` | batch | `false`: don't give the batch the pipeline's tuning parameters. A mapping: parameters to add |
+| `database` | batch | Where the batch's inputs are, when the batch doesn't say |
+| `batches-file` | batch | A file with batch definitions. The next steps know it too |
+| `use-cache` | batch | `true`: don't run again the runs that succeeded |
+| `commit` | batch | Use the results QA-Board has for this commit, without running |
+| `runner` | all | Batch: the [runner](/docs/runners) of its runs. Run: `windows`, to run the command on Windows from Linux with the [Windows runner](/docs/jenkins-integration) |
+
+Every option's text can use `{output_dir}`, `{steps...}`, parameters and environment variables.
+
+</details>
+
+<details>
+<summary>The files in the pipeline's folder</summary>
+
+| File | |
+|---|---|
+| *pipeline.json* | The steps: name, type, status (`pending`, `running`, `success`, `failed`, `skipped`), command, duration, and for batches the label and the number of runs. Updated after each step: the web app reads it |
+| *steps/&lt;name&gt;/runs.json* | The runs of a batch step: `{steps.<name>.runs_file}` |
+| *tuning.json* | The tuning parameters the pipeline got, if any |
+| *metrics.json* | The pipeline's metrics: yours, and `is_failed` |
+| *log.txt* | The output of every step |
+| *batches.json* | The runs of the batch steps, by batch, without status or metrics. For scripts written for [the first syntax](#first-syntax) |
+
+</details>
+
+<Anchor id="environment-variables" />
+
+<details>
+<summary>Environment variables</summary>
+
+Commands, and the scripts they start, have:
+
+| Variable | |
+|---|---|
+| `PIPELINE_OUTPUT_DIR` | The pipeline's folder, like `{output_dir}` |
+| `PIPELINE_STEP` | The name of the step that is running |
+| `PIPELINE_TUNING_FILE` | The path of *tuning.json*, when the pipeline got tuning parameters |
+
+</details>
+
+<details>
+<summary>Pipelines with inputs</summary>
+
+A pipeline needs no input: QA-Board names it after its batch. It can have some, like any batch: then it runs once
+per input, and commands can use `{input_path}` and `{rel_input_path}`.
+
+```yaml title="qa/batches.yaml"
+per-sequence:
+  type: pipeline
+  database: /mnt/sequences
+  inputs:
+  - seq-01
+  - seq-02
+  steps:
+  - run: python split.py {input_path} --output {output_dir}/frames
+  - batch: frames
+    database: "{output_dir}/frames"
+```
+
+If your project defines an input type named `pipeline` under `inputs.types` in *qaboard.yaml*, its `database` and
+`globs` say what the inputs of pipelines are.
+
+</details>
+
+### The first syntax {#first-syntax}
+Pipelines used to list their steps among the `configurations`, with the options of a step as mappings in its list.
+It still works, and both can be mixed with `steps:`:
+
+```yaml title="qa/batches.yaml"
+my-pipeline:
+  type: pipeline
+  configurations:
+  - batch:
+    - my-images
+    - label: my-label
+  - run: python report.py $PIPELINE_OUTPUT_DIR/batches.json
+```
+
+Scripts written for it read *batches.json*, a mapping from each batch's name to its runs:
+
+```python
+import os
+import json
+from pathlib import Path
+
+pipeline_output_dir = Path(os.environ["PIPELINE_OUTPUT_DIR"])
+batches = json.load(open(pipeline_output_dir / "batches.json"))
+for run in batches["my-images"]:
+    print(run["output_dir"])
+```
+
+New scripts are shorter with `{steps.<name>.output_dirs}` or [the runs file](#runs-file), which also has the status
+and the metrics.
+
+### Projects with their own pipelines {#own-pipelines}
+Some projects handled the `pipeline` input type in their own `run()` function before QA-Board did. QA-Board now does
+these runs itself. To keep doing them in your code, in *qaboard.yaml*:
+
+```yaml title="qaboard.yaml"
+pipelines:
+  engine: entrypoint    # default: builtin
+```
+
+`QABOARD_PIPELINES_ENGINE=builtin` (or `entrypoint`) chooses for one command, to try pipelines one at a time. Your
+`run()` can also hand a pipeline over: `from qaboard.pipelines import run_pipeline`, then
+`return run_pipeline(context)`.
+
+<details>
+<summary>What changes when you move to QA-Board's pipelines</summary>
+
+Definitions and scripts keep working: steps in `configurations`, their options, `$PIPELINE_OUTPUT_DIR`,
+*batches.json*, *tuning.json*, and `{fields}` from the run's context, its parameters and the environment.
+
+What's different:
+- A brace that isn't a field (JSON, `awk '{print $1}'`) used to stop **every** `{field}` of the command from being
+  replaced. Now the fields QA-Board knows are replaced, and the rest is left as is.
+- *batches.json* gives the folders where the runs are after the batch ran, also for the runs that were done again
+  ([runs that already ran](/docs/using-the-qa-cli#dealing-with-existing-results)).
+- Mistakes in the definition stop `qa batch` before anything runs.
+- A parameter or environment variable named `steps` keeps its meaning in `{steps}`, with a warning: rename it to use
+  the results of steps.
+
+</details>
+
+<Cards>
+  <Card title="Batches of inputs" to="/docs/batches-running-on-multiple-inputs">
+    Define the batches your pipelines run.
+  </Card>
+  <Card title="Metrics" to="/docs/computing-quantitative-metrics">
+    How QA-Board shows the metrics your scripts write.
+  </Card>
+</Cards>

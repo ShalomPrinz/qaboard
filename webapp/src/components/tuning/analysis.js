@@ -5,6 +5,7 @@
 // The unit is the *parameter set*: the runs that share the same values of the parameters that change in the batch.
 // Each parameter set usually ran on several tests (an input with its configurations): its metrics are aggregated over
 // them, so that a set that ran on more tests doesn't weigh more.
+import { is_pipeline } from "../../utils/runName";
 
 const is_number = x => typeof x === 'number' && Number.isFinite(x);
 const is_plain = v => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -41,7 +42,10 @@ export const analyze = (outputs, { aggregation = 'average' } = {}) => {
   const aggregate = aggregations[aggregation] ?? average;
   // in the order the runs were made, whatever the page sorts them by: a parameter set keeps its number
   const by_id = (a, b) => (typeof a.id === 'number' && typeof b.id === 'number' ? a.id - b.id : 0);
-  const runs = (outputs ?? []).filter(o => o && o.output_type !== 'optim_iteration').sort(by_id).map(o => ({ output: o, flat: flatten(o.params) }));
+  const candidates = (outputs ?? []).filter(o => o && o.output_type !== 'optim_iteration');
+  // A pipeline next to the runs it started isn't one more parameter set: its "parameters" are its steps
+  const started_by_pipelines = candidates.filter(o => !is_pipeline(o));
+  const runs = (started_by_pipelines.length > 0 ? started_by_pipelines : candidates).sort(by_id).map(o => ({ output: o, flat: flatten(o.params) }));
 
   // which parameters change
   const seen = new Map();

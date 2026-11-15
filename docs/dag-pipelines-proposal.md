@@ -1,8 +1,10 @@
 # Proposal: pipelines (DAGs) of batches
 
-Status: proposal, not implemented. It used to be a docs page (`website/docs/dag-pipelines.mdx`); it moved here
-because it describes a design, not a feature. Discussion: [issue #10](https://github.com/Samsung/qaboard/issues/10).
-A "user-side" implementation exists in some projects; the plan is to upstream it into the core project.
+Status: **partly implemented**. Pipelines shipped as an ordered list of steps, batches and commands
+(`qaboard/pipelines.py`, user docs in `website/docs/pipelines.mdx`): it's the "user-side" implementation mentioned
+below, upstreamed, with named steps and `{steps.<name>...}` in commands. What is left of this proposal is the graph:
+steps that say what they need, to run independent steps in parallel. See "What shipped, and what's next" at the end.
+Discussion: [issue #10](https://github.com/Samsung/qaboard/issues/10).
 
 ## The problem
 QA-Board lacks expressivity for a common use-case:
@@ -87,3 +89,36 @@ $ qa batch my-evaluation-batch
 - (+) Caching for free.
 - (?) Needs a clear API: how each job looks up the results of earlier jobs. Parameter tuning will likely need
   naming conventions too.
+
+
+## What shipped, and what's next
+Pipelines are a batch of `type: pipeline` whose run does `steps:` in order:
+
+```yaml
+my-calibration:
+  type: pipeline
+  steps:
+  - batch: my-calibration-images
+  - name: calibrate
+    run: python calibration.py {steps.my-calibration-images.output_dirs} --output {output_dir}/calibration.yaml
+  - batch: my-evaluation-batch
+    configs: ["{output_dir}/calibration.yaml"]
+```
+
+Compared with `needs:` on batches above:
+- The pipeline is the container: batches stay what they are, and can be run alone.
+- Commands get results as arguments (`{steps.<name>.output_dirs}`, `.files[...]`, `.runs_file`), with plain
+  `str.format` fields, not a new expression language.
+- Caching is explicit, per step (`use-cache: true`): it reuses `qa batch --action-on-existing=skip`.
+
+Not done, by order of value:
+1. **`qa batch my-pipeline --from <step>` / `--only <step>`**, to work on a late step without editing the YAML. It
+   needs the pipeline's directory to survive a rerun (today `qa run` cleans it, or uses a new one), so that the files
+   of earlier commands are still there.
+2. **`needs:` between steps**, defaulting to the previous step: steps are named, so it is a compatible extension, and
+   `graphlib` sorts them. The gain is small (the runs of a batch already run in parallel); the work is running
+   independent steps together and showing a graph in the web app instead of a line.
+3. **Caching commands**: knowing that a script and its inputs didn't change. It's where DVC-like tools get
+   complicated; out of scope until someone needs it.
+4. **Steps as runs of their own** in the database, to compare a step with the reference's and rerun one from the web
+   app. Today the web app reads the steps from the pipeline's `pipeline.json`.

@@ -146,7 +146,10 @@ class RunContext():
             # note that right now .obj is the info that will get send there
             ctx.obj["database"] = database
         input_path_absolute = (database / input_path).resolve()
-        if not input_path_absolute.exists():
+        from .pipelines import PIPELINE_INPUT, PIPELINE_TYPE
+        # pipelines that give no input work on what their steps say
+        is_pipeline_input = ctx.obj['input_type'] == PIPELINE_TYPE and input_path_absolute.name == PIPELINE_INPUT
+        if not input_path_absolute.exists() and not is_pipeline_input:
             click.secho(f"[ERROR] {input_path_absolute} cannot be found", fg='red')
             sys.exit(1)
 
@@ -184,7 +187,7 @@ class RunContext():
         # FIXME: SIRC-specific workaround, inputs with /tv/ in their path skip metadata() and get no input_metadata.
         #        It's an easy fix on SIRC's side, then we remove this special case.
         #        Nothing else in qaboard depends on it. Note that `qa batch` still calls metadata() for those inputs when filtering.
-        if "/tv/" not in str(input_path):
+        if "/tv/" not in str(input_path) and not (is_pipeline_input and not input_path_absolute.exists()):
             metadata = input_metadata(run_context, config)
             for k in list(metadata.keys()):
                 if k.startswith('_') or k == "input_path" or k == "rel_input_path":

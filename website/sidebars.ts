@@ -180,6 +180,8 @@ const sidebars: SidebarsConfig = {
           ],
         },
         "batches-advanced",
+        // Batches and scripts, one after the other
+        "pipelines",
         "using-the-qa-cli",
       ],
     },

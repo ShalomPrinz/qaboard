@@ -28,7 +28,7 @@ import { ConfigurationsTags, ConfigurationDiff } from "../configurations/Configu
 import { RunInfoMenuItems } from "./RunInfoMenu"
 import { AttemptTag } from "./AttemptTag"
 import { LazyPopover } from "./LazyPopover"
-import { runName } from "../utils/runName"
+import { runName, without_steps } from "../utils/runName"
 import { PickReferenceMenuItem } from "../matching/PickReferenceMenuItem"
 
 
@@ -286,7 +286,8 @@ const OutputTags = ({ output, output_ref, mismatch, manifests, project, commit, 
     {deleted && <Tag icon="trash">deleted</Tag>}
     {configuration && <>
       <PlatformTag platform={platform} />
-      <ConfigurationsTags configurations={configurations} tuning={output.extra_parameters} mismatch={mismatch} />
+      {/* a pipeline's steps are shown as steps (PipelineSteps) */}
+      <ConfigurationsTags configurations={without_steps(output, configurations)} tuning={output.extra_parameters} mismatch={mismatch} />
     </>}
     <AttemptTag data={output.data} style={{ marginLeft: "5px" }}/>
 

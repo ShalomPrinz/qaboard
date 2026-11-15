@@ -68,6 +68,23 @@ describe('analyze', () => {
   });
 });
 
+describe('pipelines', () => {
+  const pipeline = params => ({ ...run('PIPELINE', params, {}), output_type: 'pipeline' });
+
+  test('a pipeline is not a parameter set of the runs it started', () => {
+    const outputs = [run('a.jpg', {}, { loss: 3 }), run('b.jpg', {}, { loss: 1 }), pipeline({ batch: 'evaluation', label: 'x', run: 'python report.py' })];
+    const analysis = analyze(outputs);
+    expect(analysis.parameters).toEqual([]);
+    expect(analysis.sets).toHaveLength(1);
+  });
+
+  test('pipelines tuned together are compared', () => {
+    const analysis = analyze([pipeline({ gain: 1, run: 'report.py' }), pipeline({ gain: 2, run: 'report.py' })]);
+    expect(analysis.parameters.map(p => p.name)).toEqual(['gain']);
+    expect(analysis.sets).toHaveLength(2);
+  });
+});
+
 describe('compare', () => {
   it('ranks the parameter sets, the best first, whichever way is better', () => {
     const analysis = analyze(grid());

@@ -23,6 +23,7 @@ from .conventions import pretty_hash, get_settings, location_from_spec
 from .utils import input_metadata, entrypoint_module
 from .compat import cased_path
 from .run import RunContext
+from . import pipelines
 
 
 # Keys of batch files that are settings for their batches, not batches
@@ -315,7 +316,7 @@ def iter_inputs(
       if new_batch.startswith('.') or new_batch in BATCH_FILE_SETTINGS:
         continue
       is_batch = isinstance(new_batches[new_batch], dict) # vs e.g. aliases
-      is_pipeline = is_batch and new_batches[new_batch].get("type") == "pipeline"
+      is_pipeline = is_batch and (new_batches[new_batch].get("type") == "pipeline" or "steps" in new_batches[new_batch])
       if is_batch and not is_pipeline:
         # Allow setting defaults for database/platform at the YAML level
         # But pipelines need their own special database, everything is hardcoded for them...
@@ -482,6 +483,13 @@ def iter_batch(batch: Dict, default_run_context: RunContext, qatools_config, def
     run_context = deepcopy(default_run_context)
     run_context.configurations = batch.get('configs', batch.get('configurations', batch.get('configuration', run_context.configurations)))
     run_context.configurations = list(flatten(run_context.configurations))
+    if 'steps' in batch:
+      # Pipelines (qaboard/pipelines.py): their steps are carried by the runs' configurations
+      try:
+        run_context.configurations = [*run_context.configurations, *pipelines.steps_of(batch, run_context.batch)]
+      except pipelines.PipelineError as e:
+        raise BatchError(str(e), run_context.batch)
+      batch = {"type": pipelines.PIPELINE_TYPE, **{k: v for k, v in batch.items() if k != 'steps'}}
     if 'platform' in batch:
       run_context.platform = batch['platform']
     runner = run_context.job_options.get('type', 'local')
@@ -583,6 +591,15 @@ def iter_batch(batch: Dict, default_run_context: RunContext, qatools_config, def
       return
 
     locations = batch.get('inputs', batch.get('tests'))
+    if pipelines.is_builtin(run_context.type, qatools_config):
+      try: # mistakes are said now, not when the pipeline's run starts
+        pipelines.validate(run_context.configurations)
+      except pipelines.PipelineError as e:
+        raise BatchError(f'Pipeline "{run_context.batch}": {e}', run_context.batch)
+    if run_context.type == pipelines.PIPELINE_TYPE and not locations and not pipelines.has_own_inputs(qatools_config):
+      # no input: the pipeline works on what its steps say
+      yield replace(run_context, input_path=run_context.database / pipelines.PIPELINE_INPUT)
+      return
     if not locations:
       inputs_iter = _iter_inputs(None, run_context.database, inputs_settings, qatools_config, only=batch.get('only'), exclude=batch.get('exclude'), run_context=run_context)
       yield from (replace(run_context, input_path=i, database=d) for i, d in inputs_iter)

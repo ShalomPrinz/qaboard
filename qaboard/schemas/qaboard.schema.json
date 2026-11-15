@@ -14,6 +14,17 @@
     "storage": {"$ref": "#/$defs/storage"},
     "ci_root": {"$ref": "#/$defs/storage", "deprecated": true, "description": "Old name of `storage`."},
     "runners": {"$ref": "#/$defs/runners"},
+    "pipelines": {
+      "type": "object",
+      "description": "Pipelines: batches of `type: pipeline`, that run batches and commands one after the other.",
+      "properties": {
+        "engine": {
+          "enum": ["builtin", "entrypoint"],
+          "description": "Who does the runs of type `pipeline`: QA-Board (builtin, the default) or your run() function (entrypoint), for projects that had their own pipelines. $QABOARD_PIPELINES_ENGINE wins."
+        }
+      },
+      "additionalProperties": false
+    },
     "lsf": {"$ref": "batches.schema.json#/$defs/lsf_runner", "deprecated": true, "description": "Old place of `runners.lsf`."},
     "bit_accuracy": {"$ref": "#/$defs/bit_accuracy"},
     "gate": {"$ref": "#/$defs/gate"},

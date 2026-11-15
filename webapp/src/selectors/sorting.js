@@ -4,7 +4,7 @@
 // in the URL when users chose it.
 import { get as _get } from "es-toolkit/compat";
 
-import { runName } from "../utils/runName";
+import { runName, is_pipeline } from "../utils/runName";
 import { configurationSummary } from "../configurations/tokens";
 
 
@@ -67,11 +67,14 @@ export const compare_values = (a, b) => typeof a === 'number' && typeof b === 'n
   : collator.compare(typeof a === 'object' ? JSON.stringify(a) : String(a), typeof b === 'object' ? JSON.stringify(b) : String(b));
 
 // The ids, sorted. Runs without a value come last, whatever the order.
+// Pipelines come first, always: they started the other runs, and their results are about all of them.
 export const sorted_ids = (ids, outputs, sort_by, sort_order) => {
   const order = effective_sort_order(sort_by, sort_order);
   const values = new Map(ids.map(id => [id, sort_value(outputs[id], id, sort_by)]));
   const names = new Map(ids.map(id => [id, runName(outputs[id])]));
+  const pipelines = new Set(ids.filter(id => is_pipeline(outputs[id])));
   return [...ids].sort((ka, kb) => {
+    if (pipelines.has(ka) !== pipelines.has(kb)) return pipelines.has(ka) ? -1 : 1;
     const a = values.get(ka);
     const b = values.get(kb);
     if (missing(a) !== missing(b)) return missing(a) ? 1 : -1;

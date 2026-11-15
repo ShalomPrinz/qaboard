@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router';
 import { renderWithProviders } from '../../test-utils';
 
 import { usePrefsStore } from '../../stores/prefs';
+import { without_steps } from '../../utils/runName';
 import { RunName, RunOriginsContext, databaseLabels, runNameShown, runOriginParts, runOrigins, runLabel } from '../runNames';
 
 
@@ -27,6 +28,14 @@ const origins_of = outputs => {
 
 afterEach(() => act(() => usePrefsStore.setState({ runNameOrigin: 'auto' })));
 
+
+test('a pipeline\'s steps are not settings', () => {
+  const configurations = ['base', { gain: 2 }, { batch: 'images', label: 'x' }, { run: 'python report.py' }];
+  expect(without_steps({ output_type: 'pipeline', configurations })).toEqual(['base', { gain: 2 }]);
+  // other runs can have such settings
+  expect(without_steps({ test_input_path: 'a.jpg', configurations })).toBe(configurations);
+  expect(without_steps({ output_type: 'pipeline', configurations: ['base'] })).toEqual(['base']);
+});
 
 describe('databaseLabels', () => {
   it('keeps the shortest ends of the paths that tell databases apart', () => {

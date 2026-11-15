@@ -10,10 +10,9 @@ import { Classes, Menu } from "@blueprintjs/core";
 import { useRunNameOrigin } from "../stores/prefs";
 import { LazyHoverPopover } from "./LazyPopover";
 import { RunInfoMenuItems } from "./RunInfoMenu";
-import { runName } from "../utils/runName";
+import { runName, is_pipeline } from "../utils/runName";
 
 
-const is_pipeline = output => output.output_type === "pipeline" || output.test_input_path === "PIPELINE";
 // batches' own outputs and pipelines are named after their batch already
 const has_origin = output => !!output && output.output_type !== "batch" && output.output_type !== "optim_iteration" && !is_pipeline(output);
 

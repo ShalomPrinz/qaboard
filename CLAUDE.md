@@ -100,6 +100,15 @@ fixes (runners implement `doctor()`). The server starts/stops batches with `QABO
 `local_jobs.py`). Design and trust model: `docs/design/kubernetes-runner.md`; known limits: `docs/warts.md` (Runners).
 Kubernetes end-to-end test on kind: `.github/scripts/kubernetes_runner_e2e.py`.
 
+### Pipelines
+A batch with `type: pipeline` and `steps:` runs batches (`qa batch`) and commands one after the other, in one run
+(`qaboard/pipelines.py`, called by `qa run`; docs: `website/docs/pipelines.mdx`). Steps are carried by the run's
+configurations (`steps:` is added to them in `iterators.py`; the first syntax lists them there directly). The run writes
+`pipeline.json` (the steps' status, shown by `webapp/src/components/PipelineSteps.jsx` on the pipeline's card),
+`steps/<name>/runs.json` and `batches.json`. Commands are interpolated like the first implementation did
+(`interpolate`, `str.format` on the whole text): keep that compatible. `pipelines.engine: entrypoint` leaves these
+runs to the project's `run()`. What's next (`--from`, a graph of steps): `docs/dag-pipelines-proposal.md`.
+
 ## Release notes and docs (communicating with users)
 
 Users see the release notes in the web app's "What's new" panel: it pops up once when a period with notes

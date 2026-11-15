@@ -204,6 +204,20 @@ screen.
 To gather files from all the runs in one folder, use **Export**, next to the view's title: see
 [Exporting files](/docs/user-guide/sharing#exporting-files).
 
+### Pipelines {#pipelines}
+Some runs are **pipelines**: they run batches and scripts one after the other, for instance images, then a
+calibration, then an evaluation and a report. Their name ends with *(pipeline)*, and they come first, before the
+other runs, however the runs are sorted.
+
+A pipeline's card shows its **steps** in order. Each step has its status, how long it took and, for a batch, its
+number of runs, how many failed and how many were reused from an earlier time. While the pipeline runs, the card
+follows it. Click a step to see the command it ran; for a batch, **Show its runs** opens them, in their own batch
+when the pipeline put them there. Below the steps are the pipeline's own metrics and files, like the report it
+made from all the runs.
+
+When a step failed, it has a red border: its details say how the command ended, and the pipeline's
+[log](/docs/user-guide/logs) has its output. To write pipelines, see [Pipelines](/docs/pipelines).
+
 <details>
 <summary>Compact cards, and the batch and database in runs' names</summary>
 

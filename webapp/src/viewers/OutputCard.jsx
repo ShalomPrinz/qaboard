@@ -22,6 +22,8 @@ import { MetricsTags } from "../components/metrics";
 import { ConfigurationsTags, OutputTags, PlatformTag, StatusTag, RunBadges, style_skeleton } from '../components/tags'
 import { runTime } from '../components/RunInfoMenu'
 import { RunName } from '../components/runNames'
+import { PipelineSteps } from '../components/PipelineSteps'
+import { is_pipeline } from '../utils/runName'
 import { LazyHoverPopover } from '../components/LazyPopover'
 import { ReferenceMatchTag } from '../matching/ReferenceMatchTag'
 import { configurationSummary } from '../configurations/tokens'
@@ -634,6 +636,7 @@ const OutputCard = memo(function OutputCard(props) {
         compact={compact}
         prefix={output_new.is_running && <StatusTag output={output_new} style={compact ? undefined : { marginRight: '5px' }}/>}
       />}
+      {is_pipeline(output_new) && <PipelineSteps key="pipeline-steps" output={output_new} viewable={viewable}/>}
       {/* History shows cards as hover previews, without a logs view */}
       {output_new.is_failed && (no_header
         ? <Tag key="new-failed" intent={Intent.DANGER}>Failed</Tag>

@@ -182,3 +182,23 @@ Pod Security, admission policies, Kueue/ResourceQuota) rather than re-implementi
   persists (pgAdmin sets itself up again when its container is recreated). [S, behaviour]
 - `deployments/sirc/sirc.yml` mounts `/data:/data` in Cantaloupe instead of `/repository/data` (Cantaloupe is disabled there). [S, no change]
 - `.gitignore` lists `drafts/`, which moved to `deployments/sirc/runbooks/`, and ci.yaml's path filter still names it. [S, no change]
+
+## Pipelines (`qaboard/pipelines.py`, November 2026)
+Upstreamed from a project's own implementation, kept compatible with it. Known limits:
+- **Not tested here**: `commit:` on a batch step (lists another commit's results by setting `CI_COMMIT_SHA` for
+  `qa batch --list --action-on-existing=assert-exists`: it needs a server) and `runner: windows` on a run step (needs
+  the Jenkins Windows runner). Both are ported as they were; the Windows path no longer crashes on a failure.
+- **The pipeline's run waits for its batches**: on LSF and the like it holds a job slot while it only waits, and the
+  machine it runs on must be able to start runs (`runner: local` on the pipeline runs it where it was started).
+- **Kept for compatibility**: the `step <N>: <step>` keys in the pipeline's metrics (strings, `SUCCESS`/`FAILED`);
+  a step's `batches-file` is also given to the next steps; *batches.json* is keyed by batch name, so a batch run
+  twice keeps only its last runs there (the steps' `runs.json` don't have this problem); `{steps}` gives way to a
+  parameter or environment variable of the same name.
+- **No escape for a known field**: `{{output_dir}}` ends up replaced too, since commands are formatted until they
+  stop changing (values can use fields). Unknown fields are left alone, which covers JSON and shell code.
+- **Interpolation exposes the environment**: `{ANY_ENV_VAR}` works, like `$ANY_ENV_VAR`. Commands are written by the
+  people who can already run code in the project, so it's not a new trust boundary.
+- **Steps are not runs**: the web app reads them from `pipeline.json`. No comparison of a step with the reference's
+  pipeline, no "rerun from this step" (see `docs/dag-pipelines-proposal.md`).
+- **Tuning Analysis** leaves pipelines out when their batch also has other runs: to compare pipelines' own metrics,
+  their batch steps need another label.

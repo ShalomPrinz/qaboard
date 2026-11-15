@@ -268,7 +268,7 @@ export function analyzeBatches(text, { config } = {}) {
       continue;
     }
     const inputs = isMap(value) ? resolve(value.get("inputs", true), doc) : value;
-    const kind = isMap(value) && value.get("type") === "pipeline" ? "pipeline" : "batch";
+    const kind = isMap(value) && (value.get("type") === "pipeline" || value.has("steps")) ? "pipeline" : "batch";
     if (isSeq(value)) {
       reported.push(name);
       problems.push({

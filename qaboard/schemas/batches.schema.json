@@ -49,8 +49,9 @@
         "platform": {"$ref": "#/$defs/platform"},
         "type": {
           "type": "string",
-          "description": "The type of the inputs, one of inputs.types in qaboard.yaml. Its settings (globs, database, runners...) apply to the batch. `pipeline` runs other batches as steps."
+          "description": "The type of the inputs, one of inputs.types in qaboard.yaml. Its settings (globs, database, runners...) apply to the batch. `pipeline` runs `steps`, batches and commands, one after the other."
         },
+        "steps": {"$ref": "#/$defs/pipeline_steps"},
         "runner": {"$ref": "#/$defs/runner_name", "description": "Run this batch with this runner, unless `qa batch --runner` says otherwise."},
         "matrix": {"$ref": "#/$defs/matrix"},
         "only": {"$ref": "#/$defs/metadata_filter", "description": "Only run on the inputs whose metadata match, e.g. `{iso: '>=800'}`, or a glob on the path."},
@@ -64,6 +65,40 @@
         "dask": {"$ref": "#/$defs/dask_runner"},
         "kubernetes": {"$ref": "#/$defs/kubernetes_runner"},
         "windows": {"$ref": "#/$defs/windows_runner"}
+      },
+      "additionalProperties": false
+    },
+
+    "pipeline_steps": {
+      "description": "Pipelines: the batches and commands to run, one after the other. Later steps can use the results of earlier ones: `{steps.<name>.output_dirs}`, `{steps.<name>.runs_file}`... https://samsung.github.io/qaboard/docs/pipelines",
+      "type": "array",
+      "items": {"$ref": "#/$defs/pipeline_step"}
+    },
+    "pipeline_step": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "description": "How later steps refer to this one: `{steps.<name>...}`, with letters, digits, `-` and `_`. By default the batch's name, or the script's (`python calibrate.py`: calibrate)."},
+        "run": {
+          "description": "A command, or a list of commands done one after the other. They can use `{output_dir}` (the pipeline's directory), `{steps.<name>...}`, the pipeline's parameters as `{param}` and `$ENVIRONMENT_VARIABLES`.",
+          "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": ["string", "object"]}}]
+        },
+        "batch": {
+          "description": "The batch to run, or a list of batches.",
+          "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": ["string", "object"]}}]
+        },
+        "label": {"type": "string", "description": "Batch steps: where the runs show in the web app (`qa --label`). By default, with the pipeline."},
+        "configs": {"description": "Batch steps: configurations added after the batch's own, e.g. a file made by an earlier step: `[\"{output_dir}/calibration.yaml\"]`."},
+        "configurations": {"description": "Same as configs."},
+        "tuning": {"description": "Batch steps: `false` not to give the batch the pipeline's tuning parameters, or parameters to add to them."},
+        "database": {"type": "string", "description": "Batch steps: where the batch's inputs are, e.g. `{output_dir}/images` for files made by an earlier step."},
+        "batches-file": {"description": "Batch steps: a file with batch definitions, e.g. written by an earlier step. Also known to the next steps.", "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
+        "use-cache": {"type": "boolean", "description": "Batch steps: don't run again the runs that already succeeded (on this commit, with the same label and configurations)."},
+        "commit": {"type": "string", "description": "Batch steps: use the results this commit has, without running anything."},
+        "runner": {"type": "string", "description": "Batch steps: the runner for its runs (`qa batch --runner`). Run steps: `windows` to run the command on Windows."},
+        "allow_failure": {"type": "boolean", "description": "Continue with the next step if this one fails. The pipeline is still failed."},
+        "allow-failure": {"type": "boolean", "description": "Same as allow_failure."},
+        "use_cache": {"type": "boolean", "description": "Same as use-cache."},
+        "batches_file": {"description": "Same as batches-file."}
       },
       "additionalProperties": false
     },
