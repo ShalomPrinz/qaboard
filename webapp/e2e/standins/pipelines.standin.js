@@ -98,11 +98,11 @@ const scenario = state => {
   const done = (fields) => ({ status: 'success', ...fields });
   const pipeline_steps = [
     done({ name: 'calibration-images', type: 'batch', batches: ['calibration-images'], label: 'calibration', runs: 6, failed_runs: 0, cached_runs: 0, duration: d['calibration-images'] + 3.4, runs_file: 'steps/calibration-images/runs.json',
-      command: 'qa --label "calibration" batch "calibration-images" --action-on-existing=run --action-on-pending=wait' }),
+      command: 'qa --label calibration batch calibration-images --batches-file qa/batches.yaml --action-on-existing=run --action-on-pending=sync' }),
     done({ name: 'calibrate', type: 'run', returncode: 0, duration: d.calibrate,
       command: `python qa/calibrate.py ${calibration_dirs.join(' ')} --output ${pipeline_dir}/calibration.yaml` }),
     done({ name: 'evaluation-images', type: 'batch', batches: ['evaluation-images'], label: 'default', runs: 8, failed_runs: 0, cached_runs: 0, duration: d['evaluation-images'] + 3.6, runs_file: 'steps/evaluation-images/runs.json',
-      command: `qa --tuning '["${pipeline_dir}/calibration.yaml"]' batch "evaluation-images" --action-on-existing=run --action-on-pending=wait` }),
+      command: `qa --label default --tuning '["${pipeline_dir}/calibration.yaml"]' batch evaluation-images --batches-file qa/batches.yaml --action-on-existing=run --action-on-pending=sync` }),
     done({ name: 'report', type: 'run', returncode: 0, duration: 0.4,
       command: `python qa/report.py ${pipeline_dir}/steps/evaluation-images/runs.json ${pipeline_dir}` }),
   ];

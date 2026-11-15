@@ -689,7 +689,7 @@ shots:
       dark: standins/commit/pipeline-step-dark.webp
       width: 980
       height: 273
-      alt: 'The details of the calibration-images step, open under the pipeline''s steps: Succeeded in 11s, it runs the batch calibration-images, 6 runs, with the command qa --label "calibration" batch "calibration-images" --action-on-existing=run --action-on-pending=wait, and a "Show its 6 runs" button.'
+      alt: 'The details of the calibration-images step, open under the pipeline''s steps: Succeeded in 11s, it runs the batch calibration-images, 6 runs, with the command qa --label calibration batch calibration-images --batches-file qa/batches.yaml --action-on-existing=run --action-on-pending=sync, and a "Show its 6 runs" button.'
       caption: A step's details give the command it ran. "Show its 6 runs" opens the runs of the batch, in the batch they were put in.
   - id: commit/pipeline-running
     kind: still
@@ -718,8 +718,8 @@ shots:
       light: standins/commit/pipeline-failed.webp
       dark: standins/commit/pipeline-failed-dark.webp
       width: 980
-      height: 281
-      alt: 'The calibration pipeline''s card with a fifth step, publish_profile, in red after 30s. Its details: Failed, Allowed to fail, the command exited with the code 1, see the pipeline''s log, and the command python qa/publish_profile.py with the path of the pipeline''s calibration.yaml.'
+      height: 305
+      alt: 'The calibration pipeline''s card with a fifth step, publish_profile, in red after 30s. Its details: Failed, Allowed to fail, the command exited with the code 1, the command python qa/publish_profile.py with the path of the pipeline''s calibration.yaml, and an "Open the pipeline''s log" button.'
       caption: A failed step has a red border. Allowed to fail, it didn't stop the pipeline, which is still marked as failed.
   - id: commit/core-heatmap
     kind: still
