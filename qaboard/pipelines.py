@@ -848,7 +848,7 @@ class Pipeline:
         run['output_dir'] = _latest_dir(run['output_dir'])
       self.save_batches(step, runs)
     detailed, runs_file = self.save_runs(step, runs, cached)
-    self.results.add(StepResults(step.name, 'batch', detailed, runs_file, label=label))
+    self.results.add(StepResults(step.name, 'batch', detailed, runs_file, status='success' if returncode == 0 else 'failed', label=label))
     state.update(
       runs=len(detailed),
       failed_runs=len([r for r in detailed if r['is_failed']]),

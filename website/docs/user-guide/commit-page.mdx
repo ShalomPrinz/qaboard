@@ -98,8 +98,8 @@ Press <kbd>o</kbd> to show or hide it. It lists only what applies to the view yo
   what to show for them: a card can open on other visualizations than its neighbors, with its images in another mode
   or with their profiles. A tag like **3 runs** marks the visualizations runs ask for. Your switches apply to all
   runs, and **Each test's own view** turns off what runs ask for.
-- **Files to show**: when runs have several files for a visualization, like the stages of a pipeline or the frames of
-  a sequence, which one every card shows. See
+- **Files to show**: when runs have several files for a visualization, like the processing stages of an image or
+  the frames of a sequence, which one every card shows. See
   [Pipeline stages and frames](/docs/user-guide/other-viewers#pipeline-stages-and-frames).
 - **Viewers**: **Compare images** sets how every image viewer compares new and reference: side by side, with a wipe,
   one at a time, or their difference. Then the project's own switches, if it has some.
@@ -211,12 +211,14 @@ other runs, however the runs are sorted.
 
 A pipeline's card shows its **steps** in order. Each step has its status, how long it took and, for a batch, its
 number of runs, how many failed and how many were reused from an earlier time. While the pipeline runs, the card
-follows it. Click a step to see the command it ran; for a batch, **Show its runs** opens them, in their own batch
+follows it. Click a step to see the command it ran; for a batch, **Show its N runs** opens them, in their own batch
 when the pipeline put them there. Below the steps are the pipeline's own metrics and files, like the report it
 made from all the runs.
 
-When a step failed, it has a red border: its details say how the command ended, and the pipeline's
-[log](/docs/user-guide/logs) has its output. To write pipelines, see [Pipelines](/docs/pipelines).
+When a step failed, it has a red border: its details say how the command ended, with a button to the pipeline's
+[log](/docs/user-guide/logs), which ends with a summary of the steps. A pipeline that hasn't started yet shows its
+steps as not started; one run by your project's own code shows them without status. To write pipelines, or find
+what went wrong, see [Pipelines](/docs/pipelines#debug).
 
 <details>
 <summary>Compact cards, and the batch and database in runs' names</summary>

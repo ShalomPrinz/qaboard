@@ -32,7 +32,11 @@ pipelines:
 From that commit on, CI runs the pipelines with QA-Board. Branches without it keep the wrapper's.
 
 ## What changes
-See [what changes when you move to QA-Board's pipelines](/docs/pipelines#own-pipelines). For HW_ALG:
+See [what changes when you move to QA-Board's pipelines](/docs/pipelines#before). For HW_ALG:
 - Commands with braces that aren't fields, like JSON or `awk '{print $1}'`, now get their other `{fields}` replaced.
-- Mistakes in a pipeline's definition stop `qa batch` before anything runs.
-- `run: ... ; runner: windows` steps work as before.
+- Mistakes in a pipeline's definition stop `qa batch` before anything runs, and a typo in an option close to a known
+  one (`use-cahce`) is an error.
+- The wrapper's `postprocess()` no longer runs on pipelines, and their metrics no longer have a `step N: ...` entry
+  per step.
+- `run:` steps with `runner: windows` and batch steps with `commit:` work as before, but QA-Board's tests can't run
+  them: check them on your first branch.

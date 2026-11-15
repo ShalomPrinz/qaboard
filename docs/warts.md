@@ -187,18 +187,23 @@ Pod Security, admission policies, Kueue/ResourceQuota) rather than re-implementi
 Upstreamed from a project's own implementation, kept compatible with it. Known limits:
 - **Not tested here**: `commit:` on a batch step (lists another commit's results by setting `CI_COMMIT_SHA` for
   `qa batch --list --action-on-existing=assert-exists`: it needs a server) and `runner: windows` on a run step (needs
-  the Jenkins Windows runner). Both are ported as they were; the Windows path no longer crashes on a failure.
+  the Jenkins Windows runner). Both are ported as they were.
+- **HW_ALG keeps its own engine** until it opts in (`pipelines.default_engine`, a FIXME): its old branches keep running
+  in CI and from the web app with their qaboard.yaml. Remove once it migrated.
 - **The pipeline's run waits for its batches**: on LSF and the like it holds a job slot while it only waits, and the
   machine it runs on must be able to start runs (`runner: local` on the pipeline runs it where it was started).
-- **Kept for compatibility**: the `step <N>: <step>` keys in the pipeline's metrics (strings, `SUCCESS`/`FAILED`);
-  a step's `batches-file` is also given to the next steps; *batches.json* is keyed by batch name, so a batch run
-  twice keeps only its last runs there (the steps' `runs.json` don't have this problem); `{steps}` gives way to a
-  parameter or environment variable of the same name.
+- **Kept for compatibility**: a step's `batches_file` is also given to the next steps; *batches.json* is keyed by
+  batch name, so a batch run twice keeps only its last runs there (the steps' `runs.json` don't have this problem);
+  `PIPELINE_OUTPUT_DIR` and `PIPELINE_TUNING_FILE` are set in the process' environment (postprocess code read them);
+  a list of commands is joined with `&&`.
 - **No escape for a known field**: `{{output_dir}}` ends up replaced too, since commands are formatted until they
-  stop changing (values can use fields). Unknown fields are left alone, which covers JSON and shell code.
+  stop changing (values can use fields), like the first implementation did.
 - **Interpolation exposes the environment**: `{ANY_ENV_VAR}` works, like `$ANY_ENV_VAR`. Commands are written by the
   people who can already run code in the project, so it's not a new trust boundary.
 - **Steps are not runs**: the web app reads them from `pipeline.json`. No comparison of a step with the reference's
-  pipeline, no "rerun from this step" (see `docs/dag-pipelines-proposal.md`).
-- **Tuning Analysis** leaves pipelines out when their batch also has other runs: to compare pipelines' own metrics,
-  their batch steps need another label.
+  pipeline, no "rerun from this step" (see `docs/dag-pipelines-proposal.md`). Editing a step changes the pipeline's
+  folder (its configurations), so `use_cache` misses on batch steps whose `configs`/`database` use `{output_dir}`.
+- **Tuning Analysis** leaves pipelines out when their batch also has other runs; `qa optimize` on a pipeline would
+  mix the runs of its batch steps into its objective (they share the `label|iterN` label): give them their own label.
+- **Matrices**: siblings that run the same batch step at the same time use each other's pending runs
+  (`--action-on-pending=sync`); without a server (`--offline`) they can't see them and run them each.
