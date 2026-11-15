@@ -197,6 +197,18 @@ class TestRun(unittest.TestCase):
   def state(self, output_dir):
     return json.loads((output_dir / 'pipeline.json').read_text())
 
+  def test_steps_are_not_parameters(self):
+    # {run} would be a step's command, expanded in itself
+    from qaboard.run import RunContext
+    configurations = ["base", {"gain": 2}, {"batch": "a", "label": "y"}, {"run": "echo {label} {run}"}]
+    context = RunContext(type='pipeline', input_path=self.tmp / 'PIPELINE', database=self.tmp, platform='linux', configurations=configurations)
+    self.assertEqual(context.params, {"gain": 2})
+    # other runs can have such parameters
+    self.assertEqual(RunContext(type='default', input_path=self.tmp, database=self.tmp, platform='linux', configurations=[{"run": 1}]).params, {"run": 1})
+
+  def test_yaml_anchors_can_give_lists_of_steps(self):
+    self.assertEqual(pipelines.steps_of({"steps": [[{"batch": "a"}, {"run": "x"}], {"run": "y"}]}), [{"batch": "a"}, {"run": "x"}, {"run": "y"}])
+
   def test_commands_get_the_step_and_the_pipeline_folder(self):
     seen = []
     metrics, output_dir = self.run_pipeline([{"run": "first"}, {"name": "second", "run": "x"}], lambda command, cwd, env: seen.append((command, env['PIPELINE_STEP'], env['PIPELINE_OUTPUT_DIR'])) or 0)
@@ -354,6 +366,19 @@ parameter-typo:
   steps:
   - run: >-
       echo {treshold} '{"a": 1}' ${HOME} > {output_dir}/out.txt
+
+no-steps:
+  type: pipeline
+  steps: []
+
+parameter-named-steps:
+  type: pipeline
+  configs:
+  - steps: 100
+  steps:
+  - batch: one-image
+    label: pipeline-one-image
+  - run: echo {steps} {steps.one-image.output_dir} > {output_dir}/out.txt
 
 bad-reference:
   type: pipeline
@@ -523,6 +548,18 @@ class TestPipelinesCli(unittest.TestCase):
     self.assertIn('Pipeline FAILED', out)
     self.assertIn('To run the failed command again by hand:', out)
     self.assertIn(f'PIPELINE_OUTPUT_DIR={output_dir} exit 1', out)
+
+  def test_pipelines_without_steps_are_an_error_before_anything_runs(self):
+    result = self.batch('no-steps', '--list')
+    self.assertNotEqual(result.returncode, 0)
+    self.assertIn('it has no steps', result.stdout + result.stderr)
+
+  def test_a_parameter_named_steps(self):
+    # e.g. iterations: {steps} is the parameter, {steps.<name>} the results
+    (output_dir,), result = self.run_pipeline('parameter-named-steps')
+    value, path = (output_dir / 'out.txt').read_text().split()
+    self.assertEqual(value, '100')
+    self.assertTrue(path.endswith('cli-tests-a'))
 
   def test_steps_need_the_pipeline_type(self):
     result = self.batch('wrong-type', '--list')

@@ -607,7 +607,8 @@ def iter_batch(batch: Dict, default_run_context: RunContext, qatools_config, def
     locations = batch.get('inputs', batch.get('tests'))
     if pipelines.is_builtin(run_context.type, qatools_config):
       try: # mistakes are said now, not when the pipeline's run starts
-        pipelines.validate(run_context.configurations)
+        if not pipelines.validate(run_context.configurations):
+          raise pipelines.PipelineError('it has no steps. Add them under "steps:", each starting with "-", like "- batch: my-batch" or "- run: python my_script.py"')
       except pipelines.PipelineError as e:
         raise BatchError(f'Pipeline "{run_context.batch}": {e}', run_context.batch)
     if run_context.type == pipelines.PIPELINE_TYPE and not locations and not pipelines.has_own_inputs(qatools_config):

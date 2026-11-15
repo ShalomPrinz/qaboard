@@ -11,7 +11,7 @@ import click
 from .conventions import serialize_config, output_dirs_for_input_part
 from .attempts import latest_dir
 from .utils import merge, input_metadata
-from .pipelines import PIPELINE_INPUT, PIPELINE_TYPE
+from .pipelines import PIPELINE_INPUT, PIPELINE_TYPE, is_step
 
 
 @dataclass
@@ -229,7 +229,8 @@ class RunContext():
         # TODO: cache it in self._parameters? but needs to ensure sync..
         parameters = {}
         for c in self.configs:
-            if isinstance(c, dict):
+            # a pipeline's steps are not parameters: {run} would be a step's command
+            if isinstance(c, dict) and not (self.type == PIPELINE_TYPE and is_step(c)):
                 parameters = merge(c, parameters)
         return parameters
 

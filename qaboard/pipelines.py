@@ -30,6 +30,7 @@ import time
 import difflib
 import traceback
 import shlex
+import signal
 import subprocess
 from copy import deepcopy
 from dataclasses import dataclass, field, fields
@@ -141,6 +142,8 @@ def steps_of(batch: Dict, batch_name: Optional[str] = None) -> List[Dict]:
       '  - name: my-script\n'
       '    run: python my_script.py'
     )
+  if isinstance(steps, list): # YAML anchors can give lists of steps: - *common-steps
+    steps = [s for item in steps for s in (item if isinstance(item, list) else [item])]
   if not isinstance(steps, list):
     raise PipelineError(f'The steps of "{batch_name}" must be a list of steps like "- batch: my-batch" or "- run: python my_script.py", not: {steps}')
   for index, step in enumerate(steps):
@@ -368,7 +371,7 @@ def validate(configurations: List[Any]) -> List[Step]:
 def shell_quote(value: Any) -> str:
   text = str(value)
   if os.name == 'nt':
-    return f'"{text}"' if re.search(r'\s', text) else text
+    return subprocess.list2cmdline([text])
   return shlex.quote(text)
 
 
@@ -460,10 +463,19 @@ class StepResults:
 
 
 class _Steps:
-  """`steps` in commands: {steps.<name>...} or {steps[<name>]...}"""
-  def __init__(self, later: List[str]):
+  """
+  `steps` in commands: {steps.<name>...} or {steps[<name>]...}.
+  If the pipeline has a parameter named `steps` (e.g. a number of iterations), `{steps}` alone is that parameter.
+  """
+  def __init__(self, later: List[str], parameter: Any = None):
     self._results: Dict[str, StepResults] = {}
     self._later = later
+    self._parameter = parameter
+
+  def __format__(self, spec: str) -> str:
+    if self._parameter is None:
+      raise PipelineError('{steps} needs the step you want: {steps.<name>.output_dirs}...')
+    return format(self._parameter, spec)
 
   def add(self, results: StepResults) -> None:
     self._results[results.name] = results
@@ -567,11 +579,48 @@ def run_live(command: str, cwd=None, env=None) -> int:
     stdout=subprocess.PIPE,
     stderr=subprocess.STDOUT,
     bufsize=1,
+    # its own process group: when the pipeline is stopped, we stop what the command started too (e.g. `qa batch`)
+    start_new_session=os.name != 'nt',
   )
   assert process.stdout
-  for line in iter(process.stdout.readline, ''):
-    print(line.rstrip('\r\n'), flush=True)
-  return process.wait()
+  try:
+    for line in iter(process.stdout.readline, ''):
+      print(line.rstrip('\r\n'), flush=True)
+    return process.wait()
+  except BaseException:
+    _stop(process)
+    raise
+
+
+def _stop(process: subprocess.Popen) -> None:
+  if process.poll() is not None:
+    return
+  try:
+    if os.name != 'nt':
+      os.killpg(process.pid, signal.SIGTERM)
+    else:
+      process.terminate()
+    process.wait(timeout=10)
+  except (OSError, subprocess.TimeoutExpired):
+    try:
+      if os.name != 'nt':
+        os.killpg(process.pid, signal.SIGKILL)
+      else:
+        process.kill()
+    except OSError:
+      pass
+
+
+def _json_list(text: str) -> Optional[List[Dict]]:
+  """The JSON list `qa batch --list` prints, also when the project's code printed other things before"""
+  for match in re.finditer(r'^\[', text, re.MULTILINE):
+    try:
+      value = json.loads(text[match.start():])
+    except ValueError:
+      continue
+    if isinstance(value, list):
+      return value
+  return None
 
 
 def _qa() -> str:
@@ -614,7 +663,6 @@ class Pipeline:
       self.batches_files = []
     self.tuning_path: Optional[Path] = None
     self.env: Dict[str, str] = dict(os.environ)
-    self._warned_steps = False
     self.metrics: Dict[str, Any] = {"is_failed": False}
     self.state: Dict[str, Any] = {
       "version": 1,
@@ -659,12 +707,9 @@ class Pipeline:
     values.update(context_fields(context))
     values.update({k: v for k, v in context.params.items() if isinstance(k, str)})
     values.update(os.environ)
-    if 'steps' in values:
-      if not self._warned_steps:
-        self._warned_steps = True
-        click.secho('WARNING: you have a parameter or environment variable named "steps": {steps...} is its value, not the pipeline\'s steps. Rename it to use the results of steps.', fg='yellow', err=True)
-    else:
-      values['steps'] = self.results
+    # a parameter named `steps` stays usable as {steps}, and {steps.<name>...} are the steps
+    self.results._parameter = values.get('steps')
+    values['steps'] = self.results
     return values
 
   ###### batch steps
@@ -685,8 +730,8 @@ class Pipeline:
     options = step.options
     raw_label, shown_label = self.child_label(step, params)
     args = [_qa()]
-    if raw_label != 'default':
-      args.append(f'--label {shell_quote(raw_label)}')
+    # always: without it, `qa batch` would use $QA_LABEL, the pipeline's own label
+    args.append(f'--label {shell_quote(raw_label)}')
     if 'database' in options and options['database'] is not None:
       args.append(f'--database {shell_quote(interpolate(str(options["database"]), params))}')
     if self.obj.get('share'):
@@ -731,9 +776,8 @@ class Pipeline:
     if process.returncode != 0:
       click.secho(process.stderr, fg='red')
       raise PipelineError(f"Could not list the runs of the batch (exit code {process.returncode}): {command}{flags} --list")
-    try:
-      runs = json.loads(process.stdout)
-    except ValueError:
+    runs = _json_list(process.stdout)
+    if runs is None:
       click.secho(process.stdout, fg='red')
       raise PipelineError(f"Could not read the runs of the batch: {command}{flags} --list")
     for run in runs:
@@ -795,7 +839,8 @@ class Pipeline:
       state["commit"] = str(step.options['commit'])
     else:
       # We list all the runs, also those we don't run again: --action-on-existing is only for the command that runs
-      command = f"{command} --action-on-existing={'skip' if use_cache else 'run'} --action-on-pending=wait"
+      # runs that are pending, e.g. started by the same step of another pipeline of a matrix: we use their results
+      command = f"{command} --action-on-existing={'skip' if use_cache else 'run'} --action-on-pending=sync"
       state["command"] = command
       click.secho(f"$ {command}", fg='cyan')
       returncode = self.run_command(command, cwd=self.cwd, env=self.env)

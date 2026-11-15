@@ -312,7 +312,9 @@ def run(ctx, input_path, output_path, keep_previous, no_postprocess, forwarded_a
           if os.getcwd() != cwd:
             os.chdir(cwd)
 
-          metrics = postprocess_(runtime_metrics, run_context, skip=no_postprocess or runtime_metrics['is_failed'], save_manifests_in_database=save_manifests_in_database)
+          # the project's postprocess() is written for its own runs: pipelines save their metrics themselves (metrics.json)
+          skip_postprocess = no_postprocess or runtime_metrics['is_failed'] or pipelines.is_builtin(run_context.type, config)
+          metrics = postprocess_(runtime_metrics, run_context, skip=skip_postprocess, save_manifests_in_database=save_manifests_in_database)
           if not metrics:
             metrics = runtime_metrics
 
