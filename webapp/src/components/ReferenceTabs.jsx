@@ -4,9 +4,14 @@
 //   - with several, tabs in their colors: click one to compare with it, drag them to reorder, double-click to rename,
 //     right-click or "⋯" for the rest. "r" shows the next reference, "Shift r" the previous one.
 //     Hovering a tab shows what the reference's bar would: its commit, batch, filter, runs, and if it's the same as new.
+//   - they can also see several together: the reference compared (in the bottom bar: the metrics and most viewers
+//     compare with it) is always shown, they tick the others in their tabs, or all at once with "All N together".
+//     The image viewer shows those ticked next to it (useComparison().together). Comparing with another reference
+//     keeps those shown. Tabs always have their checkbox: ticking doesn't move them.
 // A reference has one name, in its tab, the reference's bar and the viewers: see reference_names in src/selection.js.
-// The references not shown are fetched without their outputs (commits can have thousands). Once the page is idle, we
-// load the next and previous references' outputs, so that "r" shows them at once. Hovering a tab loads it too.
+// The references not shown are fetched without their outputs (commits can have thousands), those ticked with them.
+// Once the page is idle, we load the next and previous references' outputs, so that "r" shows them at once.
+// Hovering a tab loads it too.
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import styled from "styled-components";
@@ -33,6 +38,7 @@ import { errorMessage } from "../api/http";
 import { useComparison, useSiteConfig, updateSelected, usePrefetchCommitPage } from "../hooks";
 import {
   add_reference, duplicate_reference, is_default_name, move_reference, remove_reference, rename_reference, show_reference, swap_with_top,
+  toggle_together, show_all_together, show_one_at_a_time,
 } from "../selection";
 import { available_batch } from "../selectors/batches";
 import { CommitAvatar } from "./avatars";
@@ -145,6 +151,20 @@ const Strip = styled.div`
   .qa-tabs-hint {
     font-size: 11px;
     white-space: nowrap;
+  }
+  /* "All N together" and "One at a time": only those that would change something show, the first in the row, but both
+     keep their room, so that ticking references moves nothing */
+  .qa-tabs-together {
+    display: flex;
+    gap: 2px;
+  }
+  .qa-tabs-together .bp6-button {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .qa-tabs-together .bp6-button[aria-hidden="true"] {
+    order: 1;
+    visibility: hidden;
   }
   /* while dragging a tab: where it would go, in words. It floats below the tabs: taking room would move them */
   .qa-tabs-drop-hint {
@@ -280,6 +300,41 @@ const Tab = styled.div`
     border-radius: 50%;
     background: var(--side-color);
   }
+  /* the references' dot is their checkbox, in their color: filled when they are shown */
+  .qa-tab-check {
+    appearance: none;
+    flex: none;
+    position: relative;
+    width: 10px;
+    height: 10px;
+    margin: 0;
+    padding: 0;
+    border: 1.5px solid var(--side-color);
+    border-radius: 2px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .qa-tab-check:checked {
+    background: var(--side-color);
+  }
+  .qa-tab-check:checked::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: -0.5px;
+    width: 3px;
+    height: 6px;
+    border: solid var(--qa-surface);
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+  }
+  .qa-tab-check:disabled {
+    cursor: default;
+  }
+  .qa-tab-check:focus-visible {
+    outline: 2px solid var(--side-color);
+    outline-offset: 2px;
+  }
   /* names stay whole, unless very long */
   .qa-tab-name {
     flex: none;
@@ -329,7 +384,7 @@ const Tab = styled.div`
   &:hover .qa-tab-menu, &[data-lit] .qa-tab-menu, &:focus-within .qa-tab-menu, .qa-tab-menu[aria-expanded="true"] {
     opacity: 1;
   }
-  input {
+  input:not(.qa-tab-check) {
     min-width: 0;
     width: 120px;
     border: none;
@@ -463,7 +518,8 @@ const runs_text = batch => {
 };
 
 // Everything about a reference, on hover: what the reference's bar would show
-const TabCard = ({ reference, project, batch_counts }) => {
+// `primary`: the name of the reference compared, those ticked are shown together with it
+const TabCard = ({ reference, project, batch_counts, primary }) => {
   const { commit } = reference;
   const batch = reference_batch(reference);
   const loaded = !!commit?.batches && !!commit.id;
@@ -475,7 +531,7 @@ const TabCard = ({ reference, project, batch_counts }) => {
       <span>{reference.display_label}</span>
       {!!reference.milestone && <Icon icon="star" size={12} title="A milestone"/>}
       <span className={`qa-card-status ${Classes.TEXT_MUTED}`}>
-        {reference.is_top ? 'top bar' : reference.is_shown ? 'bottom bar' : `reference ${reference.number}`}
+        {reference.is_top ? 'top bar' : reference.is_shown ? 'bottom bar' : `reference ${reference.number}${reference.together ? ', shown together' : ''}`}
       </span>
     </div>
     {commit?.error
@@ -510,7 +566,9 @@ const TabCard = ({ reference, project, batch_counts }) => {
     <div className={`qa-card-hint ${Classes.TEXT_MUTED}`}>
       {reference.is_top
         ? 'The references are compared with it. Drag it on a reference to swap them'
-        : reference.is_shown ? 'Compared with the top results. Drag it on them to swap them' : 'Click to compare with it'}
+        : reference.is_shown ? 'Compared with the top results. Drag it on them to swap them'
+        : reference.together ? <>Shown next to <strong>{primary}</strong> in the image viewer. Click to compare with it everywhere</>
+        : 'Click to compare with it'}
       {' '}· double-click to rename · right-click or ⋯ for more
     </div>
   </Card>;
@@ -546,6 +604,10 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
   // milestones are called by their name, also instead of the names we give, like "ref 2"
   const rename = () => setRenaming(reference.milestone && is_default_name(reference.label) ? '' : reference.label || '');
   const { is_top } = reference;
+  // the references shown together with the one compared, see ReferenceTabs. Not for the top results.
+  const { together } = actions;
+  // a press on the checkbox is not the start of a drag of the tab
+  const pressed_check = useRef(false);
   const what = is_top ? 'Top' : `Reference ${reference.number}`;
   // Only the two bars swap: the top results with the reference shown. Nothing is replaced or removed.
   const swap = actions.swap && <MenuItem icon="swap-vertical" text="Swap the bars" label={`with ${actions.swap.name}`} disabled={!actions.swap.can} onClick={act(actions.swap.do)}/>;
@@ -559,6 +621,10 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
       <MenuItem icon="arrow-left" text="Move left" disabled={reference.index === 0} onClick={act(() => actions.move(reference.index - 1))}/>
       <MenuItem icon="arrow-right" text="Move right" disabled={reference.index === actions.count - 1} onClick={act(() => actions.move(reference.index + 1))}/>
       <MenuDivider/>
+      {!reference.is_shown && <MenuItem icon={reference.together ? 'tick' : 'blank'} text={`Show together with ${together.primary}`} label="in the image viewer" onClick={act(together.toggle)}/>}
+      <MenuItem icon="grid-view" text={`Show all ${actions.count} together`} disabled={together.all} onClick={act(together.show_all)}/>
+      <MenuItem icon="layers" text="Show one at a time" disabled={!together.any} onClick={act(together.show_one)}/>
+      <MenuDivider/>
       <MenuItem icon="cross" text="Remove" intent={Intent.DANGER} onClick={act(actions.remove)}/>
     </>}
   </Menu>;
@@ -571,7 +637,7 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
     if (label !== (reference.label ?? '')) actions.rename(label);
   };
   // clicks in the menu (in a portal) bubble to the tab through React: only those on the tab itself compare
-  const on_tab = event => event.currentTarget.contains(event.target) && !event.target.closest?.('.qa-tab-menu');
+  const on_tab = event => event.currentTarget.contains(event.target) && !event.target.closest?.('.qa-tab-menu, .qa-tab-check');
   const tab = <Tab
     ref={element}
     role={is_top ? undefined : 'tab'}
@@ -586,6 +652,8 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
     data-drop={drop}
     {...prefetch}
     {...drag}
+    onMouseDown={event => { pressed_check.current = !!event.target.closest?.('.qa-tab-check'); }}
+    onDragStart={event => pressed_check.current ? event.preventDefault() : drag.onDragStart(event)}
     onClick={event => renaming === null && on_tab(event) && actions.show?.()}
     onDoubleClick={event => on_tab(event) && rename()}
     onKeyDown={event => {
@@ -599,7 +667,21 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
     }}
   >
     {(drop === 'before' || drop === 'after') && <span className="qa-drop-marker" aria-hidden/>}
-    <span className="qa-tab-dot"/>
+    {is_top
+      ? <span className="qa-tab-dot"/>
+      : <input
+          type="checkbox"
+          className="qa-tab-check"
+          checked={reference.is_shown || reference.together}
+          disabled={reference.is_shown}
+          aria-label={reference.is_shown
+            ? `${reference.display_label} is always shown: the reference compared everywhere`
+            : `Show ${reference.display_label} together with ${together.primary}`}
+          title={reference.is_shown
+            ? 'The reference compared everywhere. Tick others to see them next to it in the image viewer'
+            : `Show ${reference.display_label} together with ${together.primary}, in the image viewer`}
+          onChange={together.toggle}
+        />}
     {renaming !== null
       ? <input
           autoFocus
@@ -647,7 +729,7 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
   </Tab>;
   return <ContextMenu content={menu} className="qa-tab-wrap">
     <Tooltip
-      content={<TabCard reference={reference} project={project} batch_counts={batch_counts}/>}
+      content={<TabCard reference={reference} project={project} batch_counts={batch_counts} primary={together?.primary}/>}
       disabled={renaming !== null || menu_open}
       hoverOpenDelay={500}
       placement="bottom-start"
@@ -824,6 +906,11 @@ export const ReferenceTabs = () => {
   // what tells them apart, the top results included
   const [top_details, ...details] = tabs_details([top, ...references], project);
   const swap = index => updateSelected(swap_with_top(resolved, index));
+  // Those shown together with the reference compared: it's always shown, the others when ticked
+  const nb_together = references.filter(reference => !reference.is_shown && reference.together).length;
+  const all_together = nb_together === references.length - 1;
+  const showAll = () => updateSelected(show_all_together(resolved));
+  const showOne = () => updateSelected(show_one_at_a_time(resolved));
   const can_swap = index => !!references[index]?.commit_id && !!resolved.new_commit_id;
 
   // Dragging a reference among the others moves it. Dragging it on the top tab, or the top tab on it, swaps them:
@@ -917,6 +1004,14 @@ export const ReferenceTabs = () => {
           rename: label => updateSelected(rename_reference(resolved, reference.index, label)),
           duplicate: () => updateSelected(duplicate_reference(resolved, reference.index, reference.display_label)),
           move: to => updateSelected(move_reference(resolved, reference.index, to)),
+          together: {
+            primary: shown.display_label,
+            any: nb_together > 0,
+            all: all_together,
+            toggle: () => updateSelected(toggle_together(resolved, reference.index)),
+            show_all: showAll,
+            show_one: showOne,
+          },
           // only the reference in the bottom bar swaps with the top results
           swap: reference.is_shown ? { name: top.display_label, can: can_swap(reference.index), do: () => swap(reference.index) } : undefined,
         }}
@@ -930,6 +1025,14 @@ export const ReferenceTabs = () => {
       </PopoverNext>
       <span className={`qa-tabs-hint ${Classes.TEXT_MUTED}`}>
         <kbd>r</kbd> next · <kbd>⇧ r</kbd> previous
+      </span>
+      <span className="qa-tabs-together">
+        <Button size="small" variant="minimal" disabled={all_together} aria-hidden={all_together} onClick={showAll}
+          title={`Show the ${references.length} references next to each other in the image viewer. The other viewers compare with ${shown.display_label}`}
+        >All {references.length} together</Button>
+        <Button size="small" variant="minimal" disabled={nb_together === 0} aria-hidden={nb_together === 0} onClick={showOne}
+          title="Show one reference at a time, the one compared"
+        >One at a time</Button>
       </span>
     </div>
     {drop_hint && <span className="qa-tabs-drop-hint" aria-live="polite">{drop_hint}</span>}

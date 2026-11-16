@@ -12,7 +12,8 @@ import {
 import { errorMessage } from "./api/http";
 import { usePrefsStore } from "./stores/prefs";
 import { useSelected, updateSelected, reference_names, side_colors, is_default_name } from "./selection";
-import { available_batch, compute_batches, compute_config } from "./selectors/batches";
+import { available_batch, compute_batches, compute_config, reference_matcher } from "./selectors/batches";
+import { shared_rules } from "./matching/rules";
 import { default_project } from "./defaults";
 import { milestonesQuery, milestones_of, milestone_name, no_milestones } from "./milestones/api";
 import { side_color } from "./sideColors";
@@ -295,8 +296,15 @@ const side_label = (milestone, label, fallback) => label && !is_default_name(lab
 // The references users selected (see `references` in src/selection.js), with what we know about them:
 // their commit (without its outputs, unless we have them already), their name, color...
 // The one shown is the reference commit we compare with, fetched as before with its outputs.
+// Those shown together with it (`together`, see src/selection.js) are fetched with their outputs too: `loading` until
+// we have them.
 // TanStack Query keeps the same array while the commits are the same: the comparison changes only when they do
-const commits_data = results => results.map(result => result.data);
+const commits_state = results => results.map(result => ({
+  commit: result.data,
+  // placeholders are the commit without its outputs
+  loading: result.isLoading || result.isPlaceholderData,
+  error: commit_error(result.error),
+}));
 
 function useReferences(selected, ref_commit, milestones, enabled) {
   const queryClient = useQueryClient();
@@ -305,13 +313,19 @@ function useReferences(selected, ref_commit, milestones, enabled) {
   // While they load, their commit with its outputs if we have it, e.g. after we compared with them.
   const others = references.filter((_, index) => index !== ref_index);
   const cached_others = useQueries({
-    combine: commits_data,
-    queries: others.map(side => ({
+    combine: commits_state,
+    queries: others.map(side => side.together ? {
+      // like the one shown, they refresh while their runs are running. Without an id: the latest on the reference branch
+      ...commitQuery({ project: side.project, id: side.commit_id ?? undefined }),
+      enabled: enabled && !!side.project && side.commit_id !== '',
+      placeholderData: () => (side.commit_id ? queryClient.getQueryData(commitSummaryQuery({ project: side.project, id: side.commit_id }).queryKey) : undefined)
+        ?? findCachedCommit(queryClient, side.project, side.commit_id),
+    } : {
       ...commitSummaryQuery({ project: side.project, id: side.commit_id ?? undefined }),
       enabled: enabled && !!side.commit_id,
       placeholderData: () => queryClient.getQueryData(commitQuery({ project: side.project, id: side.commit_id }).queryKey)
         ?? findCachedCommit(queryClient, side.project, side.commit_id),
-    })),
+    }),
   });
   return useMemo(() => {
     const names = reference_names(references);
@@ -320,9 +334,10 @@ function useReferences(selected, ref_commit, milestones, enabled) {
     const colors = side_colors(color_new, references).slice(1);
     return references.map((side, index) => {
       const is_shown = index === ref_index;
-      const commit = is_shown ? ref_commit : cached_others[index < ref_index ? index : index - 1];
+      const other = is_shown ? undefined : cached_others[index < ref_index ? index : index - 1];
+      const commit = is_shown ? ref_commit : other?.commit;
       // e.g. the default reference: the latest commit on the reference branch
-      const commit_id = side.commit_id ?? (is_shown ? ref_commit?.id ?? null : null);
+      const commit_id = side.commit_id ?? (is_shown || side.together ? commit?.id ?? null : null);
       const [milestone] = milestones_of(milestones, { project: side.project, commit: commit_id ?? undefined, batch: side.batch, filter: side.filter });
       const number = index + 1;
       return {
@@ -332,6 +347,9 @@ function useReferences(selected, ref_commit, milestones, enabled) {
         number,
         is_shown,
         commit: commit ?? undefined,
+        // of those shown together with the one shown: their runs aren't there yet, they could not be loaded
+        loading: side.together && !!other?.loading,
+        error: other?.error,
         milestone,
         // what the tabs, the reference's bar and the viewers call it: its milestone's name, else what users called it,
         // else "ref", "ref 2"... (see reference_names). Numbers, not letters: blind tests call images A and B.
@@ -341,6 +359,43 @@ function useReferences(selected, ref_commit, milestones, enabled) {
       };
     });
   }, [references, ref_index, color_new, ref_commit, cached_others, milestones]);
+}
+
+
+// The references shown together with the one compared (the primary), in the tabs' order, without it: the image
+// viewer shows them next to it, the other viewers compare with the primary only.
+// [{ key, index, number, label, color, project, commit, loading, error, batch, match }]: `batch` is their selected
+// batch, with their filter, `match(output_new)` their run a new run is compared with (see reference_matcher).
+// They are there as soon as they are ticked: `loading` until their runs are, viewers keep their place.
+// `rules`: how runs find their reference run on this page, those that apply to any reference (shared_rules).
+// The same array while nothing changes, e.g. when the primary refreshes: output cards don't render again.
+const no_together = [];
+const together_fields = ['key', 'index', 'number', 'label', 'project', 'commit', 'loading', 'error', 'batch', 'match'];
+const same_together = (a, b) => a.length === b.length
+  && a.every((entry, i) => together_fields.every(field => entry[field] === b[i][field]) && entry.color.slot === b[i].color.slot);
+
+function useTogether(references, rules) {
+  const entries = useMemo(() => {
+    const shown = references.filter(reference => reference.together && !reference.is_shown);
+    if (shown.length === 0) return no_together;
+    const other_rules = shared_rules(rules);
+    return shown.map(reference => ({
+      key: `reference-${reference.number}`,
+      index: reference.index,
+      number: reference.number,
+      label: reference.display_label,
+      color: reference.color,
+      project: reference.project,
+      commit: reference.commit,
+      loading: reference.loading,
+      error: reference.error,
+      ...reference_matcher({ commit: reference.commit, batch: reference.batch, filter: reference.filter, rules: other_rules }),
+    }));
+  }, [references, rules]);
+  const [stable, setStable] = useState(entries);
+  if (stable === entries || same_together(stable, entries)) return stable;
+  setStable(entries);
+  return entries;
 }
 
 
@@ -380,6 +435,7 @@ function useComparisonState() {
   // to name what we compare
   const { data: milestones = no_milestones } = useQuery({ ...milestonesQuery(project), enabled: !!project && on_commit_page });
   const references = useReferences(selected, ref_commit, milestones, on_commit_page);
+  const together = useTogether(references, selected.reference_rules);
 
   // The configuration comes from the batch shown (not filtered), else its commit, else the project:
   // it changes only with the data, not when users filter or sort outputs
@@ -440,8 +496,8 @@ function useComparisonState() {
   );
 
   return useMemo(
-    () => ({ selected, project, project_data, list: searched_list, unsearched_list: default_list, new_commit, ref_commit, ...batches, ...config, metrics, selected_views, default_views, references, compared, labels }),
-    [selected, project, project_data, searched_list, default_list, new_commit, ref_commit, batches, config, metrics, selected_views, default_views, references, compared, labels],
+    () => ({ selected, project, project_data, list: searched_list, unsearched_list: default_list, new_commit, ref_commit, ...batches, ...config, metrics, selected_views, default_views, references, compared, labels, together }),
+    [selected, project, project_data, searched_list, default_list, new_commit, ref_commit, batches, config, metrics, selected_views, default_views, references, compared, labels, together],
   );
 }
 

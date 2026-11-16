@@ -307,3 +307,99 @@ test('dragging a tab says where it would go, between which tabs', async () => {
   expect(hint()).toBeNull();
   expect(marker()).toBeNull();
 });
+
+describe('several references together', () => {
+  const check = name => screen.getByRole('checkbox', { name });
+  const together = () => [...query().entries()].filter(([key]) => key.endsWith('[together]')).map(([key]) => key);
+  const button = name => screen.queryByRole('button', { name });
+
+  test('users tick references in their tabs: the one compared is always shown', async () => {
+    show(`/p/commit/${a}?reference=${b}&compare=${c}&compare=${d}`);
+    // the reference compared: nothing to tick
+    const primary = check('ref is always shown: the reference compared everywhere');
+    expect(primary).toBeChecked();
+    expect(primary).toBeDisabled();
+    expect(primary).toHaveAttribute('title', 'The reference compared everywhere. Tick others to see them next to it in the image viewer');
+    expect(check('Show ref 3 together with ref')).not.toBeChecked();
+    // the top results have no checkbox
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+
+    // ticking doesn't compare with it, rename it, or drag it
+    const box = check('Show ref 3 together with ref');
+    fireEvent.mouseDown(box);
+    const drag = new Event('dragstart', { bubbles: true, cancelable: true });
+    act(() => { tab(3).dispatchEvent(drag); });
+    expect(drag.defaultPrevented).toBe(true);
+    fireEvent.click(box);
+    await waitFor(() => expect(together()).toEqual(['compare[1][together]']));
+    fireEvent.doubleClick(check('Show ref 3 together with ref'));
+    expect(reference()).toBe(b);
+    expect(tab(1)).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(check('Show ref 3 together with ref')).toBeChecked();
+    expect(check('Show release 1.0 together with ref')).not.toBeChecked();
+
+    // comparing with another keeps those shown, with the one it replaces
+    fireEvent.click(tab(2));
+    await waitFor(() => expect(reference()).toBe(c));
+    expect(check('release 1.0 is always shown: the reference compared everywhere')).toBeDisabled();
+    expect(check('Show ref together with release 1.0')).toBeChecked();
+    expect(check('Show ref 3 together with release 1.0')).toBeChecked();
+    // "r" too
+    fireEvent.keyDown(document.body, { key: 'r' });
+    await waitFor(() => expect(reference()).toBe(d));
+    expect(check('Show ref together with ref 3')).toBeChecked();
+    expect(check('Show release 1.0 together with ref 3')).toBeChecked();
+
+    // unticking
+    fireEvent.click(check('Show ref together with ref 3'));
+    await waitFor(() => expect(check('Show ref together with ref 3')).not.toBeChecked());
+    expect(together()).toEqual(['compare[1][together]']);
+  });
+
+  test('all together, or one at a time: the buttons after the tabs', async () => {
+    show(`/p/commit/${a}?reference=${b}&compare=${c}&compare=${d}`);
+    expect(button('One at a time')).not.toBeInTheDocument();
+    fireEvent.click(button('All 3 together'));
+    await waitFor(() => expect(together()).toEqual(['compare[0][together]', 'compare[1][together]']));
+    expect(screen.getAllByRole('checkbox').every(box => box.checked)).toBe(true);
+    // all are: only one at a time is left
+    expect(button('All 3 together')).not.toBeInTheDocument();
+    expect(reference()).toBe(b);
+
+    // some of them: both
+    fireEvent.click(check('Show ref 3 together with ref'));
+    await waitFor(() => expect(together()).toEqual(['compare[0][together]']));
+    expect(button('All 3 together')).toBeInTheDocument();
+    fireEvent.click(button('One at a time'));
+    await waitFor(() => expect(together()).toEqual([]));
+    // the URL is as before
+    expect(query().getAll('compare')).toEqual([c, d]);
+    expect(button('One at a time')).not.toBeInTheDocument();
+    // the buttons keep their room
+    expect(document.querySelectorAll('.qa-tabs-together button')).toHaveLength(2);
+  });
+
+  test("from a tab's menu", async () => {
+    show(`/p/commit/${a}?reference=${b}&compare=${d}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Reference 2: more' }));
+    expect(await screen.findByRole('menuitem', { name: /Show one at a time/ })).toHaveClass('bp6-disabled');
+    fireEvent.click(screen.getByRole('menuitem', { name: /Show together with ref/ }));
+    await waitFor(() => expect(together()).toEqual(['compare[0][together]']));
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    // the reference compared is always shown: its menu has no tick
+    fireEvent.click(screen.getByRole('button', { name: 'Reference 1: more' }));
+    expect(await screen.findByRole('menuitem', { name: /Show all 2 together/ })).toHaveClass('bp6-disabled');
+    expect(screen.queryByRole('menuitem', { name: /Show together with/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Show one at a time/ }));
+    await waitFor(() => expect(together()).toEqual([]));
+  });
+
+  test('those ticked are loaded with their runs', async () => {
+    show(`/p/commit/${a}?reference=${b}&compare[0][commit]=${c}&compare[0][together]=1&compare[1]=${f}`);
+    await waitFor(() => expect(tab(3)).toHaveTextContent('branch-fff'));
+    const requests = id => fetch.mock.calls.map(([url]) => new URL(url, 'http://localhost')).filter(u => u.pathname === `/api/v1/commit/${id}`).map(u => u.searchParams.get('with_outputs'));
+    await waitFor(() => expect(requests(c)).toEqual([null]));
+    expect(requests(f)).toEqual(['false']);
+  });
+});

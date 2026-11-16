@@ -3,6 +3,7 @@
 import {
   selection_from_url, url_for_selection, date_range_from_query, route_info,
   show_reference, add_reference, remove_reference, swap_with_top, move_reference, duplicate_reference, rename_reference,
+  toggle_together, show_all_together, show_one_at_a_time,
   reference_names, reference_colors, side_colors, switch_new_and_reference,
   project_url,
 } from '../selection';
@@ -212,9 +213,9 @@ describe('several references', () => {
 
   test('without other references, the reference is the only one', () => {
     const s = select('/p/commit/a?reference=b&batch_ref=x&filter_ref=f');
-    expect(s.references).toEqual([{ project: 'p', commit_id: 'b', batch: 'x', filter: 'f', label: '' }]);
+    expect(s.references).toEqual([{ project: 'p', commit_id: 'b', batch: 'x', filter: 'f', label: '', together: false }]);
     expect(s.ref_index).toBe(0);
-    expect(select('/p/commit/a').references).toEqual([{ project: 'p', commit_id: null, batch: 'default', filter: '', label: '' }]);
+    expect(select('/p/commit/a').references).toEqual([{ project: 'p', commit_id: null, batch: 'default', filter: '', label: '', together: false }]);
   });
 
   test('the reference shown is at ref_index among the others', () => {
@@ -228,7 +229,7 @@ describe('several references', () => {
 
   test('references with a batch, filter or project', () => {
     const { url, selected } = act('/p/commit/a?reference=b', add_reference, { commit_id: 'c', batch: 'tuning', filter: 'scene:1', project: 'other' });
-    expect(selected.references[1]).toEqual({ commit_id: 'c', batch: 'tuning', filter: 'scene:1', project: 'other', label: 'ref 2' });
+    expect(selected.references[1]).toEqual({ commit_id: 'c', batch: 'tuning', filter: 'scene:1', project: 'other', label: 'ref 2', together: false });
     // the old reference, now not shown, is only a commit id
     expect(new URLSearchParams(url.split('?')[1]).get('compare')).toBe('b');
     expect(selected).toMatchObject({ ref_commit_id: 'c', selected_batch_ref: 'tuning', filter_batch_ref: 'scene:1', ref_project: 'other', ref_index: 1 });
@@ -275,8 +276,8 @@ describe('several references', () => {
     expect(selected.selected_batch_new).toBe('default');
     // the place keeps its name: "ref 2" is now the commit that was on top, and the top is "new". Colors follow results.
     expect(selected.references).toEqual([
-      { project: 'p', commit_id: 'b', batch: 'default', filter: '', label: '', color: 1 },
-      { project: 'p', commit_id: 'a', batch: 'x', filter: '', label: 'ref 2', color: 0 },
+      { project: 'p', commit_id: 'b', batch: 'default', filter: '', label: '', color: 1, together: false },
+      { project: 'p', commit_id: 'a', batch: 'x', filter: '', label: 'ref 2', color: 0, together: false },
     ]);
     // the old top results are in the bottom bar
     expect(selected).toMatchObject({ ref_commit_id: 'a', ref_index: 1, selected_batch_ref: 'x', label_new: '' });
@@ -284,6 +285,104 @@ describe('several references', () => {
     // swapping again goes back, with the reference compared shown
     expect(act(url, swap_with_top, 1).selected).toMatchObject({
       new_commit_id: 'a', selected_batch_new: 'x', ref_commit_id: 'c', ref_index: 1, label_ref: 'ref 2', label_new: '',
+    });
+  });
+
+  describe('references shown together', () => {
+    // which references are ticked, by commit, and the primary
+    const ticked = selected => selected.references.filter(r => r.together).map(r => r.commit_id);
+    const primary = selected => selected.references[selected.ref_index].commit_id;
+    const url = '/p/commit/a?reference=b&compare=c&compare=d';
+    const together = act(url, toggle_together, 2);
+
+    test('the tick is in the URL, on its reference', () => {
+      expect(together.url).toBe('/p/commit/a?reference=b&compare%5B0%5D=c&compare%5B1%5D%5Bcommit%5D=d&compare%5B1%5D%5Btogether%5D=1');
+      expect(ticked(together.selected)).toEqual(['d']);
+      expect(together.selected.references.map(r => r.together)).toEqual([false, false, true]);
+      // links written by hand
+      expect(ticked(select('/p/commit/a?reference=b&compare[0][commit]=c&compare[0][together]=true'))).toEqual(['c']);
+      expect(ticked(select('/p/commit/a?reference=b&compare[0][commit]=c&compare[0][together]=0'))).toEqual([]);
+    });
+
+    test('without ticks, URLs are as before', () => {
+      expect(act(together.url, toggle_together, 2).url).toBe(url);
+      expect(act(together.url, show_one_at_a_time).url).toBe(url);
+      expect(act(url, show_one_at_a_time).url).toBe(url);
+      expect(act(url, show_reference, 1).url).toBe('/p/commit/a?reference=c&compare=b&compare=d&ref_index=1');
+    });
+
+    test('the primary is always shown: it has no tick', () => {
+      expect(toggle_together(select(url), 0)).toEqual({});
+      expect(toggle_together(select(url), 9)).toEqual({});
+      const all = act(url, show_all_together);
+      expect(ticked(all.selected)).toEqual(['c', 'd']);
+      expect(primary(all.selected)).toBe('b');
+      expect(ticked(act(all.url, show_one_at_a_time).selected)).toEqual([]);
+    });
+
+    test('another primary keeps those shown, with the one it replaces', () => {
+      const { selected, url: next } = act(together.url, show_reference, 1);
+      expect(primary(selected)).toBe('c');
+      expect(ticked(selected)).toEqual(['b', 'd']);
+      // a ticked reference as primary: the same are shown
+      const swapped = act(together.url, show_reference, 2).selected;
+      expect(primary(swapped)).toBe('d');
+      expect(ticked(swapped)).toEqual(['b']);
+      expect(ticked(act(next, show_reference, 0).selected)).toEqual(['c', 'd']);
+    });
+
+    test('adding a reference shows it with the others', () => {
+      const { selected } = act(together.url, add_reference, { commit_id: 'e' });
+      expect(primary(selected)).toBe('e');
+      expect(ticked(selected)).toEqual(['b', 'd']);
+      // one at a time: the new one only
+      expect(ticked(act(url, add_reference, { commit_id: 'e' }).selected)).toEqual([]);
+      // one we have already
+      expect(ticked(act(together.url, add_reference, { commit_id: 'c' }).selected)).toEqual(['b', 'd']);
+    });
+
+    test('ticks follow their references', () => {
+      // moved
+      const moved = act(together.url, move_reference, 2, 0).selected;
+      expect(ids(moved)).toEqual(['d', 'b', 'c']);
+      expect(ticked(moved)).toEqual(['d']);
+      expect(primary(moved)).toBe('b');
+      // renamed
+      const renamed = act(together.url, rename_reference, 2, 'night').selected;
+      expect(renamed.references[2]).toMatchObject({ label: 'night', together: true });
+      expect(ticked(act(together.url, rename_reference, 1, 'night').selected)).toEqual(['d']);
+      // removed: another one, the ticked one, the primary
+      expect(ticked(act(together.url, remove_reference, 1).selected)).toEqual(['d']);
+      expect(act(together.url, remove_reference, 2).url).not.toContain('together');
+      const removed = act(together.url, remove_reference, 0).selected;
+      expect(primary(removed)).toBe('c');
+      expect(ticked(removed)).toEqual(['d']);
+      // duplicated: the copy is the primary, next to those shown
+      const copied = act(together.url, duplicate_reference, 2).selected;
+      expect(ids(copied)).toEqual(['b', 'c', 'd', 'd']);
+      expect(copied.ref_index).toBe(3);
+      expect(copied.references.map(r => r.together)).toEqual([true, false, true, false]);
+    });
+
+    test('ticks stay when the bars are swapped', () => {
+      // the primary and the top results
+      const switched = roundtrip(together.url, switch_new_and_reference(select(together.url))).selected;
+      expect(switched).toMatchObject({ new_commit_id: 'b', ref_commit_id: 'a' });
+      expect(ticked(switched)).toEqual(['d']);
+      const swapped = act(together.url, swap_with_top, 0).selected;
+      expect(ticked(swapped)).toEqual(['d']);
+      // another reference goes on top: the top results take its place, next to those that were shown
+      const other = act(together.url, swap_with_top, 1).selected;
+      expect(other).toMatchObject({ new_commit_id: 'c', ref_commit_id: 'a', ref_index: 1 });
+      expect(ticked(other)).toEqual(['b', 'd']);
+    });
+
+    test('ticks come with batches, filters, names and colors', () => {
+      const start = '/p/commit/a?reference=b&compare[0][commit]=c&compare[0][batch]=x&compare[0][filter]=f&compare[0][label]=night&compare[0][color]=4&compare[0][together]=1';
+      const { selected } = act(start, show_reference, 1);
+      expect(selected).toMatchObject({ ref_commit_id: 'c', selected_batch_ref: 'x', filter_batch_ref: 'f', label_ref: 'night', color_ref: 4 });
+      expect(ticked(selected)).toEqual(['b']);
+      expect(act(start, toggle_together, 1).selected.references[1]).toMatchObject({ batch: 'x', filter: 'f', label: 'night', color: 4, together: false });
     });
   });
 
