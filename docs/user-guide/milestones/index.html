@@ -18,7 +18,7 @@
 <link rel="alternate" type="application/rss+xml" href="/qaboard/release-notes/rss.xml" title="QA-Board release notes RSS Feed">
 <link rel="alternate" type="application/atom+xml" href="/qaboard/release-notes/atom.xml" title="QA-Board release notes Atom Feed">
 <link rel="alternate" type="application/json" href="/qaboard/release-notes/feed.json" title="QA-Board release notes JSON Feed"><link rel="stylesheet" href="/qaboard/assets/css/styles.96dbde19.css">
-<script src="/qaboard/assets/js/runtime~main.2d8e7d21.js" defer="defer"></script>
+<script src="/qaboard/assets/js/runtime~main.a49df1f7.js" defer="defer"></script>
 <script src="/qaboard/assets/js/main.0bd41459.js" defer="defer"></script>
 </head>
 <body>
@@ -55,12 +55,18 @@ your account, as milestones listed only for you.</p></div></div>
 <p>Milestones are listed in two menus:</p>
 <ul>
 <li class="">The <strong>Change</strong> menu of the commit bars: pick a milestone in the <strong>ref</strong> bar&#x27;s menu to compare with it, in the
-<strong>new</strong> bar&#x27;s to look at it. Its batch and filter are selected too.</li>
+<strong>new</strong> bar&#x27;s to look at it. Its batch and filter are selected too. With
+<a class="" href="/qaboard/docs/user-guide/comparing-results#several-references">several references</a>, it replaces the one shown, or shows it
+if it is one of them already. To compare with it too, hover it and click its <strong>Stack as a
+reference</strong>.</li>
 <li class="">The sidebar&#x27;s <strong>Milestones</strong> menu: pick one to open its results, compared with the project&#x27;s default reference.</li>
 </ul>
 <figure class="figure_SMyr" style="max-width:556px"><div class="frame_gpSn" data-zoom="true"><picture class="lightOnly_JDk_"><source type="image/avif" srcset="/qaboard/media/shots/commit/change-menu/05e897a4227b2455.avif"><source type="image/webp" srcset="/qaboard/media/shots/commit/change-menu/f0d9e0c52c5fe547.webp"><img class="image_k94w" src="/qaboard/media/shots/commit/change-menu/f0d9e0c52c5fe547.webp" alt="The reference commit&#x27;s Change menu: a project box, Swap the bars, Also show in the top bar, Stack another reference, Remove from comparison, the reference branch main, then the milestones kd-1.3 and kd-1.2 with their batch, branch and commit." width="556" height="506" loading="lazy" decoding="async" style="background-image:url(&quot;data:image/webp;base64,UklGRjgAAABXRUJQVlA4ICwAAADQAQCdASoQAA8AA4BaJZwAAuXsD614AAD+9xBiRMikuASYHzgv9C+AIAAAAA==&quot;)"></picture><picture class="darkOnly_Nywl"><source type="image/avif" srcset="/qaboard/media/shots/commit/change-menu/d29646b6fd5e0e60.avif"><source type="image/webp" srcset="/qaboard/media/shots/commit/change-menu/c0ca3b47a16b009f.webp"><img class="image_k94w" src="/qaboard/media/shots/commit/change-menu/c0ca3b47a16b009f.webp" alt="The reference commit&#x27;s Change menu: a project box, Swap the bars, Also show in the top bar, Stack another reference, Remove from comparison, the reference branch main, then the milestones kd-1.3 and kd-1.2 with their batch, branch and commit." width="556" height="506" loading="lazy" decoding="async" style="background-image:url(&quot;data:image/webp;base64,UklGRj4AAABXRUJQVlA4IDIAAADQAQCdASoQAA8AA4BaJZQC7AD0fyKgiAD+8OAsutGscDcGNcdg/p1Xr2kH2lWeuH4AAA==&quot;)"></picture><button type="button" class="zoomButton_wDMu" aria-label="Enlarge image" aria-haspopup="dialog"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></div><figcaption class="caption_G95k"><span>Under its quick actions, the reference&#x27;s Change menu lists the milestones, here the detector&#x27;s two releases: pick one to compare with it.</span></figcaption><dialog class="dialog_okoU" aria-label="The reference commit&#x27;s Change menu: a project box, Swap the bars, Also show in the top bar, Stack another reference, Remove from comparison, the reference branch main, then the milestones kd-1.3 and kd-1.2 with their batch, branch and commit."></dialog></figure>
 <p>Both menus list, in this order:</p>
 <ol>
+<li class="">On a commit page, the milestones <strong>On this page</strong>: the new results and the references, tagged <strong>new</strong>, <strong>ref 1</strong>,
+<strong>ref 2</strong>... in the colors of their tabs. The same tags show wherever these milestones are listed, and in
+<strong>Manage milestones…</strong>.</li>
 <li class="">Your <strong>Favorites</strong>: click the heart of a milestone to keep it first, and one click away in the sidebar, under
 <strong>Milestones</strong>. The heart of a group keeps all its milestones first, even those saved later.</li>
 <li class=""><strong>My milestones</strong>, by group. Click a group to collapse it: it stays collapsed.</li>
@@ -87,12 +93,12 @@ the milestone&#x27;s results.</p>
 <li class="">Anyone who can see the project can open the link, even for milestones listed only for you.</li>
 </ul>
 <p>To share a comparison of two milestones, add the reference milestone after <code>?vs=</code>:
-<code>https://&lt;your-qaboard&gt;/kitefin/detector/milestone/12-kd-1-3?vs=11-kd-1-2</code>. Copy it from <strong>Manage milestones…</strong>
-(select the two milestones), or with the link button next to the reference&#x27;s milestone name, when the new and
-reference results are both milestones.</p>
+<code>https://&lt;your-qaboard&gt;/kitefin/detector/milestone/12-kd-1-3?vs=11-kd-1-2</code>. Add more <code>&amp;vs=</code> to stack more
+references: <code>...?vs=11-kd-1-2&amp;vs=9-kd-1-1</code>. Copy it from <strong>Manage milestones…</strong> (select the milestones), or with the
+link button next to the reference&#x27;s milestone name, when the new and reference results are both milestones.</p>
 <p>If a link&#x27;s milestone was deleted, the page says which one it was, and offers to open the other milestone of a
-comparison. If only the reference milestone of a comparison was deleted, the new milestone opens, compared with the
-project&#x27;s default reference, and a message says so.</p>
+comparison. If only a reference milestone of a comparison was deleted, the new milestone opens, compared with the other
+references, or the project&#x27;s default reference, and a message says so.</p>
 <h2 class="anchor anchorTargetHideOnScrollNavbar_vjPI" id="editing-a-milestone">Edit a milestone<a href="#editing-a-milestone" class="hash-link" aria-label="Direct link to Edit a milestone" title="Direct link to Edit a milestone" translate="no">​</a></h2>
 <p>When the results you look at are a milestone, click its star, or its name next to it, to edit it: rename it, change
 its group, its notes or who sees it, copy its link, add it to your favorites, or delete it.</p>
@@ -111,12 +117,14 @@ their notes and what their runs used: how many, their datasets and qa batches.</
 <li class=""><strong>Find them</strong>: sort by <strong>Last updated</strong> (the default), <strong>Last created</strong>, <strong>Name</strong> or <strong>Group</strong>, search them, show
 <strong>All</strong>, <strong>Mine</strong>, <strong>Shared</strong> or <strong>Favorites</strong>, and pick a dataset or qa batch to see only the milestones whose runs
 used it.</li>
-<li class=""><strong>From each row</strong>: <strong>Open</strong> it, use it <strong>As reference</strong> (on a commit page), add it to your favorites, copy its link,
-or edit it. On a commit page, <strong>Open</strong> shows it as the new results, and keeps the reference.</li>
+<li class=""><strong>From each row</strong>: click its name to open it, use it <strong>As reference</strong> or <strong>Stack</strong> it (on a commit page), add it to
+your favorites, copy its link, or edit it. On a commit page, opening it shows it as the new results and keeps the
+reference, and tags say which milestones the page shows already.</li>
 <li class=""><strong>Several at once</strong>: select milestones to move them to a group, <strong>Share</strong> them, <strong>Make personal</strong> or <strong>Delete</strong> them
 (only yours: others&#x27; milestones are skipped).</li>
-<li class=""><strong>Compare two</strong>: select exactly two, then <strong>Compare</strong> them. The most recently updated is the new results: swap
-them with the arrows, or copy the link to the comparison.</li>
+<li class=""><strong>Compare them</strong>: select two or more, then <strong>Compare</strong>. The most recently updated is the new results, pick another in
+the footer. The others are the references, <a class="" href="/qaboard/docs/user-guide/comparing-results#several-references">stacked</a> in the
+order you selected them: the image viewer shows them together. Copy the link to the comparison to share it.</li>
 </ul>
 <h2 class="anchor anchorTargetHideOnScrollNavbar_vjPI" id="what-a-milestone-keeps">What a milestone keeps<a href="#what-a-milestone-keeps" class="hash-link" aria-label="Direct link to What a milestone keeps" title="Direct link to What a milestone keeps" translate="no">​</a></h2>
 <p>A milestone protects its results, so that you can compare with them months later:</p>
