@@ -305,8 +305,8 @@ const Tab = styled.div`
     appearance: none;
     flex: none;
     position: relative;
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     margin: 0;
     padding: 0;
     border: 1.5px solid var(--side-color);
@@ -317,11 +317,17 @@ const Tab = styled.div`
   .qa-tab-check:checked {
     background: var(--side-color);
   }
+  /* easy to hit: a click next to it would compare with the reference */
+  .qa-tab-check::before {
+    content: "";
+    position: absolute;
+    inset: -7px;
+  }
   .qa-tab-check:checked::after {
     content: "";
     position: absolute;
-    left: 2px;
-    top: -0.5px;
+    left: 3px;
+    top: 0.5px;
     width: 3px;
     height: 6px;
     border: solid var(--qa-surface);
@@ -764,7 +770,7 @@ const AddReferencePanel = ({ actions, can_duplicate }) => {
     before={<>
       <MenuDivider title="Stack a reference"/>
       <li className={Classes.TEXT_MUTED} style={{ fontSize: 12, padding: '0 7px 6px', lineHeight: 1.4 }}>
-        Compare with several references, one at a time: the new commit stays, switch references with their tabs or <kbd className={Classes.KEY}>r</kbd>.
+        Compare with several references: one at a time, or tick their tabs to see their images together. The new commit stays, switch references with their tabs or <kbd className={Classes.KEY}>r</kbd>.
       </li>
       <li style={{ padding: '2px 0 6px' }}>
         <InputGroup
@@ -878,7 +884,7 @@ export const ReferenceTabs = () => {
   if (!several)
     return <Handle style={{ top: strip_top }} data-open={adding || undefined}>
       <PopoverNext {...popover_props}>
-        <Tooltip content="Compare with several references, one at a time" hoverOpenDelay={500} placement="right">
+        <Tooltip content="Compare with several references: one at a time, or their images together" hoverOpenDelay={500} placement="right">
           <Button size="small" icon="layers" aria-label="Stack a reference">Stack a reference</Button>
         </Tooltip>
       </PopoverNext>

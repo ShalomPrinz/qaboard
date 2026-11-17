@@ -21,7 +21,7 @@ export const useDistances = (controllers, { enabled, anchor, full }) => {
   useEffect(() => {
     current.current = controllers;
   });
-  const key = controllers.map(idOf).join();
+  const key = `${controllers.map(idOf).join()} ${anchor} ${full}`;
   useEffect(() => {
     if (!enabled) return;
     let timer = null;
@@ -35,20 +35,28 @@ export const useDistances = (controllers, { enabled, anchor, full }) => {
         return !!viewport && !!reference && Math.abs(viewport.zoom - reference.zoom) < 1e-6 * reference.zoom
           && Math.abs(viewport.center.x - reference.center.x) < 1e-6 && Math.abs(viewport.center.y - reference.center.y) < 1e-6;
       };
-      setMatrix(distanceMatrix(list.map(controller => controller && follows(controller) ? readCanvas(controller.canvas('a')) : null), full ? null : anchor));
+      // ...and those still loading show nothing, or a blurry version
+      const loaded = controller => {
+        const { status, fullyLoaded } = controller.getSnapshot().a;
+        return status === 'ready' && fullyLoaded;
+      };
+      const next = distanceMatrix(list.map(controller => controller && loaded(controller) && follows(controller) ? readCanvas(controller.canvas('a')) : null), full ? null : anchor);
+      setMatrix(previous => previous?.key === key && JSON.stringify(previous.matrix) === JSON.stringify(next) ? previous : { key, matrix: next });
     };
     const schedule = () => {
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(compute, 200);
     };
     schedule();
-    const stops = current.current.filter(Boolean).map(controller => controller.onDraw(schedule));
+    const stops = current.current.filter(Boolean).flatMap(controller => [controller.onDraw(schedule), controller.subscribe(schedule)]);
     return () => {
       stops.forEach(stop => stop());
       if (timer !== null) clearTimeout(timer);
     };
-  }, [enabled, anchor, full, key]);
-  return enabled ? matrix : null;
+    // oxlint-disable-next-line react/exhaustive-deps -- the key says which viewers, the anchor and whether all pairs
+  }, [enabled, key]);
+  // not the distances of other images, or with another anchor
+  return enabled && matrix?.key === key ? matrix.matrix : null;
 };
 
 const Square = ({ entry, number }) => <span className="qiv-square" style={{ background: entry.color, color: entry.textColor }} title={entry.name}>{number}</span>;
@@ -94,7 +102,7 @@ export const ComparePanel = ({ entries, main, tiles, base, onToggleBase, distanc
   const anchor_display = anchor_pixel ? main.displayPixel('a', point) : null;
   const pinned = !!pointer?.pinned;
   return <div className="qiv-compare">
-    <div className={`qiv-compare-values ${hovering ? '' : 'qiv-stale'}`}>
+    <div className={`qiv-compare-values ${hovering || !point ? '' : 'qiv-stale'}`}>
       <div className="qiv-compare-title">
         <span>Under the pointer</span>
         {anchor_pixel && <span className="qiv-coordinates">x {anchor_pixel.x} y {anchor_pixel.y}</span>}
@@ -107,7 +115,7 @@ export const ComparePanel = ({ entries, main, tiles, base, onToggleBase, distanc
     <div className="qiv-compare-distances">
       <div className="qiv-compare-title" title="The mean difference of the colors of the views, as displayed, in levels (0–255). It follows the zoom: zoom in to compare a detail.">
         <span>How far apart</span>
-        <span className="qiv-muted">mean difference of the view, in levels</span>
+        <span className="qiv-muted">on screen, in levels (0–255) · click a pair to see it alone</span>
       </div>
       <table className="qiv-distances">
         <thead>
@@ -117,7 +125,8 @@ export const ComparePanel = ({ entries, main, tiles, base, onToggleBase, distanc
           {entries.map((row, i) => <tr key={row.index}>
             <th scope="row"><Square entry={row} number={i + 1} /></th>
             {entries.map((column, j) => {
-              if (i === j) return <td key={column.index} className="qiv-distance-self" aria-label="The same image" />;
+              // each pair once
+              if (j <= i) return <td key={column.index} className="qiv-distance-self" aria-label={i === j ? 'The same image' : 'See above'} />;
               const value = distances?.[row.index]?.[column.index] ?? null;
               const can_pair = !!row.controller && !!column.controller;
               return <td key={column.index}>
@@ -134,7 +143,7 @@ export const ComparePanel = ({ entries, main, tiles, base, onToggleBase, distanc
           </tr>)}
         </tbody>
       </table>
-      {anchor && <span className="qiv-muted qiv-compare-hint">Click an image's name to make it the anchor.</span>}
+      {anchor && <span className="qiv-muted qiv-compare-hint">Click an image's name to compare the others with it.</span>}
     </div>
   </div>;
 };

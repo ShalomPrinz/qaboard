@@ -189,7 +189,7 @@ export const ImageViewer = ({
   // more than two: each has its name and its color, also when two of them show alone
   const everything = given.length > 2 ? given.map((entry, index) => ({ ...entry, label: tileName(entry, index), ...tileColor(entry, index) })) : given;
   const [pair, setPair] = useState(null);
-  const alone = pair && pair.every(i => hasSource(everything[i])) ? pair : null;
+  const alone = pair && everything.length > 2 && pair.every(i => hasSource(everything[i])) ? pair : null;
   const list = alone ? alone.map(i => everything[i]) : everything;
   // More than two: each image in its tile, compared with the anchor, by default the first. The viewer's own two panes
   // show the anchor (a) and keep the first of the others (b, hidden: it has its tile like the others), for what
@@ -290,6 +290,10 @@ export const ImageViewer = ({
   const [message, setMessage] = useState(null);
   // compact: the toolbar shows when users ask for it
   const [chrome, setChrome] = useState(false);
+  // The values of every image under the pointer, and how far apart the images are: users can hide them. With two
+  // images, it hides the values under the pointer.
+  const [details_setting, setDetails] = useControllable(details_prop, defaultDetails, onDetailsChange);
+  const show_details = details_setting !== false;
   const diff_canvas = useRef(null);
 
   // Layout: as wide as we can, as high as the window allows. The header (toolbar, regions, values) is as wide as we can be.
@@ -347,7 +351,9 @@ export const ImageViewer = ({
   const stacked = diff_between && fullscreen && fit(2, 2) > fit(3, 1);
   // More than two images: a grid of tiles, the same in every mode but single, so that switching modes moves nothing.
   // compact: in one row, e.g. for a contact sheet where the rows of the page are runs
-  const grid = n_way ? gridLayout({ count: mode === 'single' ? 1 : list.length, available, maxHeight: max_height, aspect, gap: GAP, columns: compact && !fullscreen ? list.length : null }) : null;
+  // the values of every image show above them: the images take what's left, so that they stay in view
+  const details_height = !fullscreen && show_details && !(compact && !chrome) ? 20 * (list.length + 1) + 32 : 0;
+  const grid = n_way ? gridLayout({ count: mode === 'single' ? 1 : list.length, available, maxHeight: Math.max(200, max_height - details_height), aspect, gap: GAP, columns: compact && !fullscreen ? list.length : null }) : null;
   const slot = index => grid.slot(mode === 'single' ? 0 : index);
   const pane_width = grid ? grid.width : stacked ? fit(2, 2) : fit(columns, 1);
   const pane_height = grid ? grid.height : Math.floor(pane_width * aspect);
@@ -512,7 +518,13 @@ export const ImageViewer = ({
   const onTileClick = (event, tile_controller, element) => {
     if (single && !event?.shiftKey) return flip();
     if (event) {
-      tile_controller.pin('a', event.clientX, event.clientY, element);
+      // the anchor's viewer keeps the pin, like when users click the anchor: Esc and leaving the viewer undo it
+      const point = tile_controller.pointAt('a', event.clientX, event.clientY, element);
+      const pinned = controller.getPointer()?.pinned ? controller.getPointer().point : null;
+      const same = pinned && point && tile_controller.imagePixel('a', pinned)?.x === tile_controller.imagePixel('a', point)?.x
+        && tile_controller.imagePixel('a', pinned)?.y === tile_controller.imagePixel('a', point)?.y;
+      if (same || !point || !tile_controller.imagePixel('a', point)) controller.unpin();
+      else controller.pinPoint(point);
       onUse?.('pixel_pin');
     }
   };
@@ -520,10 +532,6 @@ export const ImageViewer = ({
   const [tile_controllers, setTileControllers] = useState({});
   const registerTile = (index, value) => setTileControllers(previous => (previous[index] ?? null) === value ? previous : { ...previous, [index]: value });
   const controllers = list.map((entry, index) => index === anchor_index ? controller : n_way && hasSource(entry) ? tile_controllers[index] ?? null : null);
-  // The values of every image under the pointer, and how far apart the images are: users can hide them. With two
-  // images, it hides the values under the pointer.
-  const [details_setting, setDetails] = useControllable(details_prop, defaultDetails, onDetailsChange);
-  const show_details = details_setting !== false;
   const [wipe_all, setWipeAll] = useState(0.5);
   const pickAnchor = index => {
     setAnchor(index);
@@ -551,7 +559,8 @@ export const ImageViewer = ({
   useLayoutEffect(() => {
     on_key.current = event => {
       // Shift+1 to 9: that image alone
-      const digit = n_way && event.shiftKey ? /^Digit([1-9])$/.exec(event.code ?? '') : null;
+      // (not where digits are typed with Shift, e.g. French keyboards: there the keys 1 to 4 pick the mode)
+      const digit = n_way && event.shiftKey && !/^[1-9]$/.test(event.key) ? /^Digit([1-9])$/.exec(event.code ?? '') : null;
       if (digit) {
         const index = Number(digit[1]) - 1;
         if (!hasSource(list[index])) return false;
@@ -768,7 +777,7 @@ export const ImageViewer = ({
   const tileNote = index => {
     const value = distances?.[anchor_index]?.[index];
     if (value === null || value === undefined) return null;
-    return value === 0 ? `same as ${names.a} here` : `Δ ${names.a}: ${formatDistance(value)}`;
+    return value === 0 ? `same as ${names.a} here` : `${formatDistance(value)} from ${names.a}`;
   };
   // sets that say when they have regions, e.g. annotations: the regions button tells users
   const announced = regionSets.find(set => set.announce && (set.total ?? set.regions?.length) > 0) ?? null;
@@ -855,7 +864,7 @@ export const ImageViewer = ({
         onClick={nextBlindStep}
       />}
       {mode === 'difference' && <DiffSettings diff={diff} onChange={value => setDiff({ ...value, layout: diff_layout })} />}
-      {notice}
+      <span className="qiv-notice">{notice}</span>
       <span className="qiv-spacer" />
       <span className="qiv-tools">
       {message && <output className="qiv-toast">{message}</output>}
@@ -969,19 +978,20 @@ export const ImageViewer = ({
     >
       {pane('a')}
       {pane('b')}
-      {n_way && others.map(({ image: other, index }) => <Tile
-        key={index}
+      {n_way && others.map(({ image: other, index: place }) => <Tile
+        key={place}
         image={other}
-        name={tileName(other, index)}
-        {...tileColor(other, index)}
+        name={tileName(other, place)}
+        {...tileColor(other, place)}
+        leader={controller}
         anchor={images.a}
         anchorName={names.a}
         anchorSize={size_a}
         mode={mode}
-        hidden={single && shown_index !== index}
+        hidden={single && shown_index !== place}
         active={visible}
         syncKey={sync_key}
-        {...slot(index)}
+        {...slot(place)}
         width={pane_width}
         height={pane_height}
         filter={filter}
@@ -989,7 +999,7 @@ export const ImageViewer = ({
         wipe={wipe_all}
         onWipeChange={setWipeAll}
         showLabel={!single}
-        note={single ? null : tileNote(index)}
+        note={single ? null : tileNote(place)}
         regions={outlines ? active_set?.regions : null}
         activeRegion={index}
         onSelectRegion={selectRegion}
@@ -997,8 +1007,8 @@ export const ImageViewer = ({
         pixelTiles={tiles}
         base={base}
         onClick={onTileClick}
-        onAnchor={() => pickAnchor(index)}
-        onController={value => registerTile(index, value)}
+        onAnchor={() => pickAnchor(place)}
+        onController={value => registerTile(place, value)}
       />)}
       {n_way && single && <div className="qiv-picks" role="radiogroup" aria-label="The image shown">
         {list.map((entry, index) => <button

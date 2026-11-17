@@ -1990,6 +1990,8 @@
   pointer-events: none;
 }
 .qiv-tile-placeholder {
+  /* under the image's name */
+  z-index: 3;
   flex-direction: row;
   gap: 8px;
   color: #c5cbd3;
@@ -2008,10 +2010,12 @@
 .qiv-label.qiv-pick {
   position: static;
   max-width: none;
-  opacity: 0.55;
+  opacity: 0.85;
+  filter: saturate(0.6);
 }
 .qiv-label.qiv-pick.qiv-active {
   opacity: 1;
+  filter: none;
   box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 .qiv-label.qiv-pick:disabled {
@@ -2098,13 +2102,18 @@
   padding: 0 4px;
   border: none;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--qiv-warning) var(--qiv-distance, 0%), var(--qiv-surface-alt));
+  /* at most half: the numbers stay readable in both themes */
+  background: color-mix(in srgb, var(--qiv-warning) calc(var(--qiv-distance, 0%) / 2), var(--qiv-surface-alt));
   color: inherit;
   font: inherit;
   cursor: pointer;
 }
 .qiv-distance:hover:not(:disabled) {
   box-shadow: 0 0 0 1px var(--qiv-accent);
+}
+.qiv-distance:focus-visible {
+  outline: 2px solid var(--qiv-accent);
+  outline-offset: 1px;
 }
 .qiv-distance:disabled {
   cursor: default;
@@ -2122,8 +2131,17 @@
 }
 
 /* Compact, e.g. the rows of a contact sheet: the images, and the toolbar when users ask for it */
-.qiv-compact:not(.qiv-chrome-open) .qiv-header > * {
+.qiv-compact:not(.qiv-chrome-open) .qiv-header > :not(.qiv-toolbar),
+.qiv-compact:not(.qiv-chrome-open) .qiv-toolbar > :not(.qiv-notice, .qiv-tools),
+.qiv-compact:not(.qiv-chrome-open) .qiv-tools > :not(.qiv-toast) {
   display: none;
+}
+/* what the app says of the images (e.g. "same as the reference") and messages stay */
+.qiv-compact:not(.qiv-chrome-open) .qiv-toolbar {
+  min-height: 0;
+}
+.qiv-notice {
+  display: contents;
 }
 /* small tiles: the names, without the images' sizes */
 .qiv-compact .qiv-tile .qiv-label-detail,

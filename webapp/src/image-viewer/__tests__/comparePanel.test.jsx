@@ -42,8 +42,9 @@ describe('comparing more than two images', () => {
 
   it('says how far apart the images are, and shows a pair alone on a click', () => {
     const { onPair } = panel();
+    // each pair once
     const cells = screen.getAllByText('2.5');
-    expect(cells).toHaveLength(2);
+    expect(cells).toHaveLength(1);
     fireEvent.click(cells[0]);
     expect(onPair).toHaveBeenCalledWith(0, 1);
     // nothing to compare with an image that isn't there

@@ -55,9 +55,11 @@ const referenceImage = ({ output_ref, path_ref, manifests, image_servers, label 
 export const otherReferenceImage = ({ other, path, image_servers, shown }) => {
   const { label, color, output, manifest } = other;
   const placeholder = fields => ({ label, color: color?.hex, textColor: color?.text, ...fields });
-  if (other.loading || (output && manifest === undefined)) return { image: placeholder({ loading: true }) };
+  if (other.error) return { image: placeholder({ missing: `Can't load ${label}: ${other.error}` }) };
+  if (other.loading) return { image: placeholder({ loading: true }) };
   if (!output) return { image: placeholder({ missing: `No run of ${label} matches this one` }) };
   if (output.deleted || !output.output_dir_url) return { image: placeholder({ missing: `The run of ${label} was deleted` }) };
+  if (manifest === undefined) return { image: placeholder({ loading: true }) };
   const path_other = reference_path(path, manifest);
   if (path_other === null) return { image: placeholder({ missing: `No ${path.split('/').pop()} in ${label}` }) };
   const meta = manifest[path_other];

@@ -611,6 +611,14 @@ export class Comparison {
     this.group?.pointer(point);
   }
 
+  // ...or a viewer synced with this one pins the point users clicked there, e.g. the tile of another image
+  pinPoint(point) {
+    if (!point) return;
+    this.leftPinned = false;
+    this.setPointerState({ point, pane: 'a', remote: false, pinned: true });
+    this.group?.pointer(point);
+  }
+
   unpin() {
     if (!this.pointer?.pinned) return;
     this.leftPinned = false;

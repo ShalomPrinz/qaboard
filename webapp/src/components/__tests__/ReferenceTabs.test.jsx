@@ -339,22 +339,22 @@ describe('several references together', () => {
     expect(check('Show ref 3 together with ref')).toBeChecked();
     expect(check('Show release 1.0 together with ref')).not.toBeChecked();
 
-    // comparing with another keeps those shown, with the one it replaces
+    // comparing with another shows as many: it takes the place of the one it replaces
     fireEvent.click(tab(2));
     await waitFor(() => expect(reference()).toBe(c));
     expect(check('release 1.0 is always shown: the reference compared everywhere')).toBeDisabled();
-    expect(check('Show ref together with release 1.0')).toBeChecked();
+    expect(check('Show ref together with release 1.0')).not.toBeChecked();
     expect(check('Show ref 3 together with release 1.0')).toBeChecked();
-    // "r" too
+    // "r" too: the one it replaces was shown, like the one that takes its place
     fireEvent.keyDown(document.body, { key: 'r' });
     await waitFor(() => expect(reference()).toBe(d));
-    expect(check('Show ref together with ref 3')).toBeChecked();
+    expect(check('Show ref together with ref 3')).not.toBeChecked();
     expect(check('Show release 1.0 together with ref 3')).toBeChecked();
 
     // unticking
-    fireEvent.click(check('Show ref together with ref 3'));
-    await waitFor(() => expect(check('Show ref together with ref 3')).not.toBeChecked());
-    expect(together()).toEqual(['compare[1][together]']);
+    fireEvent.click(check('Show release 1.0 together with ref 3'));
+    await waitFor(() => expect(check('Show release 1.0 together with ref 3')).not.toBeChecked());
+    expect(together()).toEqual([]);
   });
 
   test('all together, or one at a time: the buttons after the tabs', async () => {

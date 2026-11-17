@@ -320,15 +320,17 @@ describe('several references', () => {
       expect(ticked(act(all.url, show_one_at_a_time).selected)).toEqual([]);
     });
 
-    test('another primary keeps those shown, with the one it replaces', () => {
+    test('another primary takes the place of the one it replaces: as many are shown', () => {
+      // a reference that wasn't shown: the primary it replaces isn't anymore
       const { selected, url: next } = act(together.url, show_reference, 1);
       expect(primary(selected)).toBe('c');
-      expect(ticked(selected)).toEqual(['b', 'd']);
+      expect(ticked(selected)).toEqual(['d']);
       // a ticked reference as primary: the same are shown
       const swapped = act(together.url, show_reference, 2).selected;
       expect(primary(swapped)).toBe('d');
       expect(ticked(swapped)).toEqual(['b']);
-      expect(ticked(act(next, show_reference, 0).selected)).toEqual(['c', 'd']);
+      // cycling through them all doesn't tick them all
+      expect(ticked(act(next, show_reference, 0).selected)).toEqual(['d']);
     });
 
     test('adding a reference shows it with the others', () => {

@@ -503,8 +503,18 @@ function useComparisonState() {
 
 export const ComparisonContext = createContext(null);
 
-export const ComparisonProvider = ({ children }) =>
-  createElement(ComparisonContext.Provider, { value: useComparisonState() }, children);
+// The references shown together, on their own: run cards read them, and don't render again when anything else about
+// the comparison changes
+export const TogetherContext = createContext(no_together);
+
+export const ComparisonProvider = ({ children }) => {
+  const comparison = useComparisonState();
+  return createElement(ComparisonContext.Provider, { value: comparison },
+    createElement(TogetherContext.Provider, { value: comparison.together }, children));
+};
+
+// useComparison().together, or none without a comparison (e.g. History's previews)
+export const useReferencesTogether = () => useContext(TogetherContext);
 
 // Everything about the comparison of the new and reference commits: commits, batches, configuration and metrics
 export const useComparison = () => useContext(ComparisonContext);

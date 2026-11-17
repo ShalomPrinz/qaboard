@@ -7,7 +7,7 @@ import { act } from 'react';
 import { setupIntersectionMocking, resetIntersectionMocking, mockAllIsIntersecting } from 'react-intersection-observer/test-utils';
 import { MemoryRouter } from 'react-router';
 import { renderWithProviders, test_labels } from '../../test-utils';
-import { ComparisonContext } from '../../hooks';
+import { ComparisonContext, TogetherContext } from '../../hooks';
 import { side_color } from '../../sideColors';
 
 import { OutputCardsList } from '../OutputCardsList';
@@ -196,7 +196,7 @@ describe('OutputCardsList', () => {
       reference(5),
     ];
     const list = <MemoryRouter><OutputCardsList {...props} {...batches(1)} config={config} onRegisterOutputOptions={vi.fn()} /></MemoryRouter>;
-    const page = together => <ComparisonContext.Provider value={{ labels: test_labels, together }}>{list}</ComparisonContext.Provider>;
+    const page = together => <ComparisonContext.Provider value={{ labels: test_labels, together }}><TogetherContext.Provider value={together}>{list}</TogetherContext.Provider></ComparisonContext.Provider>;
     const { rerender } = renderWithProviders(page(together));
     act(() => mockAllIsIntersecting(true));
     await screen.findByTestId('image-viewer');

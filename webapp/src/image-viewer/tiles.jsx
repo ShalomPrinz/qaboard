@@ -19,6 +19,8 @@ export const Tile = ({
   anchor,
   anchorName,
   anchorSize,
+  // the anchor's viewer: the tile shows the same region
+  leader,
   // 'side-by-side' and 'single': the image, 'wipe': anchor | image, 'difference': anchor − image
   mode,
   // another image shows in its place (single mode)
@@ -73,6 +75,13 @@ export const Tile = ({
     controller.setGroupSize({ width: anchor_width, height: anchor_height });
   }, [controller, anchor_width, anchor_height]);
   useEffect(() => controller.setVisible(active), [controller, active]);
+  // When its image or the anchor's comes, it shows what the anchor shows, e.g. the region of interest it opened on:
+  // the sync group only tells where users move the images
+  const ready = snapshot.a.status === 'ready';
+  useEffect(() => {
+    const viewport = ready ? leader?.viewportOf('a') : null;
+    if (viewport) controller.applyViewport(viewport);
+  }, [controller, leader, ready, anchor_width, anchor_height]);
   const register = useEffectEvent(value => onController?.(value));
   useEffect(() => {
     register(controller);

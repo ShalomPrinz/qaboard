@@ -64,13 +64,25 @@ export const readCanvas = canvas => {
   }
 };
 
+// Whether two views of the same size show the same pixels: all of them
+const sameViews = (a, b) => {
+  const pixels_a = new Uint32Array(a.data.buffer, a.data.byteOffset, a.data.byteLength >> 2);
+  const pixels_b = new Uint32Array(b.data.buffer, b.data.byteOffset, b.data.byteLength >> 2);
+  for (let i = 0; i < pixels_a.length; i++) if (pixels_a[i] !== pixels_b[i]) return false;
+  return true;
+};
+
 // How far apart two views of the same size are: the mean absolute difference of their colors, in levels (0-255).
-// We sample at most ~`samples` pixels: it's a guide, computed as users zoom and pan.
+// 0 only when every pixel is the same. Else we sample at most ~`samples` pixels: it's a guide, computed as users zoom
+// and pan. Views that differ in a few pixels the sample misses are not 0: they show as "<0.1".
 export const meanDifference = (a, b, samples = 60000) => {
   if (!a || !b || a.width !== b.width || a.height !== b.height) return null;
   const pixels = a.width * a.height;
   if (pixels === 0) return null;
-  const stride = Math.max(1, Math.floor(pixels / samples));
+  if (sameViews(a, b)) return 0;
+  // not a divisor of the width: we would sample columns
+  let stride = Math.max(1, Math.floor(pixels / samples));
+  while (stride > 1 && a.width % stride === 0) stride += 1;
   let sum = 0;
   let count = 0;
   for (let p = 0; p < pixels; p += stride) {
@@ -78,7 +90,7 @@ export const meanDifference = (a, b, samples = 60000) => {
     sum += Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]);
     count += 3;
   }
-  return sum / count;
+  return Math.max(sum / count, Number.MIN_VALUE);
 };
 
 // matrix[i][j]: how far apart the views i and j are, null when we can't tell. With `from`, only that row and column.
@@ -88,4 +100,4 @@ export const distanceMatrix = (views, from = null) => views.map((a, i) => views.
   return meanDifference(a, b);
 }));
 
-export const formatDistance = value => value === null || value === undefined ? '–' : value === 0 ? '=' : value < 0.05 ? '<0.1' : value.toFixed(1);
+export const formatDistance = value => value === null || value === undefined ? '–' : value === 0 ? 'same' : value < 0.05 ? '<0.1' : value.toFixed(1);

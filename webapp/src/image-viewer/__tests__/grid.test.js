@@ -55,6 +55,19 @@ describe('how far apart the images are', () => {
     expect(meanDifference(black, null)).toBe(null);
   });
 
+  it('is zero only when every pixel is the same, whatever it samples', () => {
+    // large views are sampled: every 16th pixel of 1200 columns would be the same columns of every row
+    const a = view(1200, 800, [0, 0, 0]);
+    const b = view(1200, 800, [255, 255, 255]);
+    for (let y = 0; y < 800; y++) for (let x = 0; x < 1200; x += 16) b.data.set([0, 0, 0, 255], 4 * (y * 1200 + x));
+    expect(meanDifference(a, b)).toBeGreaterThan(200);
+    // one pixel differs: not "the same", even when the sample misses it
+    const c = view(1200, 800, [0, 0, 0]);
+    c.data[4 * 7 + 1] = 9;
+    expect(meanDifference(a, c)).toBeGreaterThan(0);
+    expect(formatDistance(meanDifference(a, c))).toBe('<0.1');
+  });
+
   it('compares all the images, or only with the anchor', () => {
     const views = [view(4, 4, [0, 0, 0]), view(4, 4, [3, 3, 3]), null, view(4, 4, [3, 3, 3])];
     expect(distanceMatrix(views)).toEqual([[0, 3, null, 3], [3, 0, null, 0], [null, null, 0, null], [3, 0, null, 0]]);
@@ -62,6 +75,6 @@ describe('how far apart the images are', () => {
   });
 
   it('says when images are the same', () => {
-    expect([0, 0.01, 5.14, null].map(formatDistance)).toEqual(['=', '<0.1', '5.1', '–']);
+    expect([0, 0.01, 5.14, null].map(formatDistance)).toEqual(['same', '<0.1', '5.1', '–']);
   });
 });

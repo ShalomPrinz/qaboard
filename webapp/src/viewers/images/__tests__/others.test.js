@@ -27,6 +27,9 @@ describe('the other references shown together', () => {
     expect(placeholder({ output: undefined, manifest: undefined })).toMatchObject({ missing: 'No run of v1.2 matches this one' });
     expect(placeholder({ output: { ...output, deleted: true } })).toMatchObject({ missing: 'The run of v1.2 was deleted' });
     expect(placeholder({ manifest: {} })).toMatchObject({ missing: 'No out.png in v1.2' });
+    // a run without files: not "loading" forever
+    expect(placeholder({ output: { id: 7 }, manifest: undefined })).toMatchObject({ missing: 'The run of v1.2 was deleted' });
+    expect(placeholder({ loading: false, output: undefined, manifest: undefined, error: 'Not found' })).toMatchObject({ missing: "Can't load v1.2: Not found" });
   });
 
   it('falls back to the TIFF or BMP version of a PNG', () => {

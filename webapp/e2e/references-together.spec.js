@@ -104,8 +104,8 @@ test('ticks references to see them together in the image viewer, compared with a
   await expect(viewer.locator('.qiv-tile')).toHaveCount(3);
   await expect(viewer.locator('.qiv-label')).toHaveText([/^newanchor/, /^ref\d/, /^ref 2\d/, /^ref 3 = ref\d/]);
   // how far each image is from the anchor: the square, the brightness
-  await expect(viewer.locator('.qiv-tile-note')).toHaveText([/^Δ new: 0\.\d$/, /^Δ new: \d\d\.\d$/, /^Δ new: 0\.\d$/]);
-  await expect(viewer.getByTitle('ref and ref 3 = ref: the same in this view. Click to compare them alone')).toHaveText('=');
+  await expect(viewer.locator('.qiv-tile-note')).toHaveText([/^0\.\d from new$/, /^\d\d\.\d from new$/, /^0\.\d from new$/]);
+  await expect(viewer.getByTitle('ref and ref 3 = ref: the same in this view. Click to compare them alone')).toHaveText('same');
 
   // The modes compare each image with the anchor
   await page.mouse.move(stage.x + 50, stage.y + 50);
@@ -127,10 +127,10 @@ test('ticks references to see them together in the image viewer, compared with a
   await viewer.getByRole('button', { name: /^ref 2/ }).click();
   await expect(viewer.locator('.qiv-pane .qiv-label')).toHaveText(/^ref 2anchor/);
   await expect(page.locator('.qiv').nth(1).locator('.qiv-pane .qiv-label')).toHaveText(/^ref 2anchor/);
-  await expect(viewer.locator('.qiv-tile-note').first()).toHaveText(/^Δ ref 2: \d\d\.\d$/);
+  await expect(viewer.locator('.qiv-tile-note').first()).toHaveText(/^\d\d\.\d from ref 2$/);
 
   // A pair alone: the viewer for two images, then all of them again
-  await viewer.getByTitle(/^new and ref[.:]/).click();
+  await viewer.getByTitle(/^new and ref[.:]/).first().click();
   await expect(viewer.locator('.qiv-tile')).toHaveCount(0);
   await expect(viewer.getByRole('button', { name: 'Blind test' })).toBeVisible();
   await viewer.getByRole('button', { name: 'All 4 images' }).click();

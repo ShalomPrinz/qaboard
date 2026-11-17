@@ -298,8 +298,13 @@ const keep_shown = ({ references, ref_index }) => references.some((r, i) => i !=
   : references;
 
 // What to change in the selection to... (pure: they take the selection, and return the changes for updateSelected)
-// ...compare the new commit with another of the references. Those shown together stay shown, with the one it replaces.
-export const show_reference = (selected, index) => references_changes(keep_shown(selected), index, selected.color_new);
+// ...compare the new commit with another of the references. As many stay shown together: the one it replaces takes its
+// tick (shown if it was), so that cycling through the references (r) doesn't end up showing, and loading, them all.
+export const show_reference = (selected, index) => {
+  const { references, ref_index, color_new } = selected;
+  const swapped = references.map((r, i) => i === ref_index ? { ...r, together: !!references[index]?.together } : r);
+  return references_changes(swapped, index, color_new);
+};
 
 // ...show a reference together with the primary, or not anymore. The primary is always shown.
 export const toggle_together = (selected, index) => {

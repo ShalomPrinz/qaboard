@@ -27,7 +27,7 @@ import { ReferenceMatchTag } from '../matching/ReferenceMatchTag'
 import { configurationSummary } from '../configurations/tokens'
 import { useOutputCardDensity, usePrefsStore } from '../stores/prefs'
 
-import { updateSelected, useComparison } from "../hooks";
+import { updateSelected, useReferencesTogether } from "../hooks";
 import { track } from "../analytics";
 import { http, errorMessage } from "../api/http";
 import { output_files_stale_time, invalidateOutputFiles } from "../api/queries";
@@ -355,7 +355,7 @@ const OutputCard = memo(function OutputCard(props) {
   // The references shown together with the one compared, for the viewers that show them (the image viewer): their run
   // that matches this one, and its files. They are there before their runs and files, so that viewers keep their place.
   // Cards can be shown without a comparison, e.g. History's previews: then there are none.
-  const together = useComparison()?.together ?? no_others;
+  const together = useReferencesTogether();
   const runs_others = matching_runs(together, output_new);
   const manifests_others = useQueries({
     combine: manifests_of,
@@ -378,6 +378,8 @@ const OutputCard = memo(function OutputCard(props) {
         output,
         manifest,
         loading: reference.loading || (has_output_dir && !!output?.output_dir_url && manifest === undefined),
+        // why the reference's runs couldn't be loaded
+        error: reference.error,
       };
     });
   }, [together, output_new, manifests_others, has_output_dir]);
