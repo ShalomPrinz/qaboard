@@ -134,8 +134,10 @@ Images per step, system metrics (GPU memory and utilization), sending later the 
 away, and a pytest plugin that makes a run of a test session.
 </RoadmapItem>
 
-<RoadmapItem status="exploring" title="A wandb.log shim">
-Mirror your existing `wandb.log` calls to QA-Board, without changing your code.
+<RoadmapItem status="experimental" title="A wandb shim">
+Run a training script written for Weights & Biases with QA-Board by changing its import to
+`from qaboard.integrations import wandb`: `init`, `log`, `config`, `summary`, `define_metric`, files and images map
+to `start_run()`, and what QA-Board doesn't do warns once ([coming from Weights & Biases](/docs/log-from-code#wandb)).
 </RoadmapItem>
 
 <RoadmapItem status="exploring" title="Importers">

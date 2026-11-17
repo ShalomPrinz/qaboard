@@ -148,6 +148,9 @@ as them, and that pod creates the Jobs with a ServiceAccount the admins set up, 
 a team: its users trust each other. Launch builds images from your code; QA-Board uses one image and the shared
 storage.
 
+**Your training scripts log to W&B?** Change `import wandb` to `from qaboard.integrations import wandb` and their runs
+show in QA-Board, compared with the reference commit's: see [coming from Weights & Biases](/docs/log-from-code#wandb).
+
 ## ClearML Agent {#clearml-agent}
 **You have** agents on your GPU machines (`clearml-agent daemon --queue default --docker --gpus 0`), or the ClearML
 Kubernetes glue that turns queued tasks into pods from a template. You enqueue tasks from the ClearML UI, or with

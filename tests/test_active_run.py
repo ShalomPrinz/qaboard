@@ -483,6 +483,30 @@ run.finish()
 """)
     self.assertEqual(result.returncode, 0, result.stderr)
 
+  def test_summaries_set_while_the_run_goes_on(self):
+    result = self.python(QA_OFFLINE='1', code="""
+import qaboard as qb
+def raises(error, f, *args):
+  try:
+    f(*args)
+  except error:
+    return
+  raise AssertionError(f"{f} didn't raise {error}")
+run = qb.start_run()
+assert run.last_step == -1
+for value in (3.0, 1.0, 2.0):
+  run.log({"val/loss": value, "val/top1": value, "train/loss": value})
+run.set_summary("val/loss", "min")          # also for what was logged before
+run.set_summary("val/*", "max")
+run.set_summary("*", "mean")
+assert dict(run.metrics) == {"val/loss": 1.0, "val/top1": 3.0, "train/loss": 2.0}, run.metrics
+assert run.last_step == 2
+raises(ValueError, run.set_summary, "val/loss", "median")
+raises(TypeError, run.set_summary, "", "min")
+run.finish()
+""")
+    self.assertEqual(result.returncode, 0, result.stderr)
+
   def test_starting_a_run_again_while_it_goes_on_ends_the_first(self):
     # a notebook's cell run twice
     server = self.server()

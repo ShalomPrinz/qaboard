@@ -552,6 +552,26 @@ class ActiveRun:
       self._changed = True
     return logged_step
 
+  def set_summary(self, series: str, how: str) -> None:
+    """
+    Chooses which value of a series is the run's metric, after `start_run()`: `run.set_summary("val/loss", "min")`.
+    `how` is "last", "min", "max", "mean" or "none", like `start_run(summary=...)`; `series` a name or a pattern,
+    "val/*". It applies to what was logged before too.
+    """
+    if not isinstance(series, str) or not series:
+      raise TypeError(f"run.set_summary() takes the name of a series, or a pattern like 'val/*', not {series!r}")
+    if how not in SUMMARIES:
+      raise ValueError(f"run.set_summary({series!r}, {how!r}): expected one of {', '.join(SUMMARIES)}")
+    with self._lock:
+      self._summaries[series] = how
+      self._changed = True
+
+  @property
+  def last_step(self) -> int:
+    """The last step logged with `log()`, -1 before any: a resumed run's steps go on from there"""
+    with self._lock:
+      return self._series.last_step if self._series is not None else -1
+
   def log_metrics(self, metrics: Mapping[str, Any]) -> None:
     """
     Sets metrics of the run, e.g. its evaluation at the end: `run.log_metrics({"mAP": 0.41})`. Values are numbers,

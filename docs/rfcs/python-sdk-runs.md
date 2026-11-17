@@ -119,7 +119,7 @@ Creating runs needs what `qa run --share` needs. The SDK sends the token `qa aut
 `QABOARD_TOKEN`. Metrics and params go through the server with the `ingest` policy. Files are the user's.
 
 ## Migration from other trackers
-- A thin shim module (`qaboard.compat.wandb`) that exposes `init`, `log`, `config`, `finish` with the same signatures,
+- A thin shim module (`qaboard.compat.wandb`, shipped as `qaboard.integrations.wandb`) that exposes `init`, `log`, `config`, `finish` with the same signatures,
   mapping to the API above, so that existing scripts run with an import change. Listed on the roadmap as
   "A wandb.log shim".
 - An importer for past runs is out of scope here (roadmap: "Importers").
@@ -238,8 +238,12 @@ tracker are in `docs/rfcs/python-sdk-runs-follow-ups.md`.
   per run or per value of a parameter, with their reference runs on demand. Grouping the History page by a
   parameter is not done.
 - **`log_image()`**: without a place on the card for per-step images, it would only be `log_artifact()`.
-- **`qaboard.compat.wandb`**: `qaboard/compat.py` is a module; the shim needs it to become a package, or another
-  name.
+- ~~**`qaboard.compat.wandb`**~~: shipped later as `qaboard.integrations.wandb` (`qaboard/integrations/wandb.py`,
+  tests in `tests/test_wandb_shim.py`, docs in "Coming from Weights & Biases" on the user docs' page), the package
+  where framework integrations go. A thin mapping onto `start_run()`: `project/group` is the batch, the run's name
+  its input (else the script's), `config` its configurations, and the run starts at the first call that needs it so
+  that `wandb.config.update(args)` after `init()` is part of its identity. It added `ActiveRun.set_summary()` for
+  `define_metric(summary=)`. Unsupported calls warn once and do nothing.
 - **`qa sync` for series and runs logged offline**: a run whose every message failed stays on disk. Its folder has
   what a later `sync` needs (`run.json` has the project, commit and batch).
 - **System metrics, alerts, sweeps, a registry**, as planned.
