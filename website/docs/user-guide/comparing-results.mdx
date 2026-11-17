@@ -90,8 +90,8 @@ its own color. Results keep their color wherever they go: when you swap the bars
 
 ## Compare with several references {#several-references}
 To compare with the last release, a tuning experiment and the latest `main` on one page, stack them. The new results
-are compared with one reference at a time, and you switch between them, or, in the image viewer,
-[see several together](#show-references-together).
+are compared with one reference at a time, and you switch between them. The image viewer
+[shows them all together](#show-references-together).
 
 1. Hover the **ref** bar and click **Stack a reference**, below it.
 2. Add a commit, a branch (its latest commit), a milestone, or the same reference again to change its batch or
@@ -139,32 +139,34 @@ The references are saved in the page's link: share it, and others can switch bet
 - When you swap the bars, the names you gave follow their results, while "new", "ref" and "ref 2" stay in their
   bars.
 - When there isn't room, the tabs' details give way first, then the tabs scroll sideways (with the mouse wheel too).
-- Only the reference shown, and those [shown together](#show-references-together), are loaded with all their runs.
-  Once the page is idle, the next and previous ones load in the background (unless they have thousands of runs), and hovering a tab loads it too.
+- Only the reference shown, and those [the image viewer shows](#show-references-together), are loaded with all their
+  runs. Once the page is idle, the next and previous ones load in the background (unless they have thousands of
+  runs), and hovering a tab loads it too.
 
 </details>
 
 ### See several references together {#show-references-together}
 The metrics, the plots and most viewers compare with one reference: the one whose tab is selected. The image viewer
-can show more at once, e.g. new, the last release and `main`, zoomed together:
+shows more: as soon as you stack two references or more, it shows the new image and all of them, each in its tile,
+zoomed together. The selected reference is the anchor: the other images are compared with it, like everywhere else on
+the page. See [Several references at once](/docs/user-guide/image-viewer#several-references-at-once).
 
-1. Tick the checkbox of the tabs you want to see too. The selected reference's checkbox stays ticked: it's always
-   shown.
-2. Or click **All N together**, after the tabs, to tick them all, and **One at a time** to untick them.
+- **Leave a reference out**: untick its tab's checkbox. Each tab has one, ticked at first.
+- **One at a time**: after the tabs, **One at a time | Together** goes back to one reference at a time in the image
+  viewer, and back. Your browser remembers it.
+- **Reorder the images**: the tiles follow the tabs' order, new first. Drag the tabs to reorder them. Selecting
+  another reference moves nothing.
 
-The images of the ticked references show next to new and the selected reference, in every image viewer of the page.
-See [Several references at once](/docs/user-guide/image-viewer#several-references-at-once). Clicking a tab's name
-still picks the reference compared everywhere: it takes the place of the one it replaces, so as many references stay shown. The ticks are saved in the page's link too.
+Selecting another tab keeps as many references shown: it takes the place of the one it replaces. The choice and the
+ticks are saved in the page's link.
 
 <details>
-<summary>Limits, and the tabs' menu</summary>
+<summary>Limits</summary>
 
 - Only the image viewer shows several references together: the metrics and every other viewer compare with the
   selected reference.
-- Each ticked reference loads all its runs, which is slow for commits with thousands of runs, and adds images to each
-  run's card: a handful of references is the practical maximum.
-- The tab's menu (right-click, or **⋯**) also has **Show together with** the selected reference, **Show all N
-  together** and **Show one at a time**.
+- Each reference shown loads all its runs, which is slow for commits with thousands of runs, and adds images to each
+  run's card: a handful of references is the practical maximum. Untick the others, or pick **One at a time**.
 
 </details>
 

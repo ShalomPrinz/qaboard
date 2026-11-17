@@ -16,6 +16,8 @@ export interface ImageDescriptor {
   label?: string;
   /** A link to the original file, offered in the copy menu */
   href?: string;
+  /** With more than two images: false when users can't make it the anchor by clicking its name */
+  canAnchor?: boolean;
   [key: string]: unknown;
 }
 

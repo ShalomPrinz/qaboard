@@ -98,10 +98,11 @@ const to_day = date => DateTime.fromJSDate(date).toISODate();
 // A "side" of the comparison: { project, commit_id, batch, filter, label, color }, project defaults to the page's,
 // label is what users call it ('' by default: "new", or "ref", see reference_names). Milestones keep their own name.
 // color is its color's number, see side_colors (undefined by default).
-// Users can also see several references together: the one shown (the primary: the reference's bar, the metrics and
-// most viewers compare with it) and those they tick, `together`: the image viewer shows them next to each other.
-// The flag is the reference's own (?compare[0][together]=1), it follows it when references move. The primary is
-// always shown: it has no flag, until another reference takes its place (see keep_shown).
+// Users see several references together: the one shown (the primary: the reference's bar, the metrics and most viewers
+// compare with it) and the others, next to each other in the image viewer. Or one at a time: ?together=0 (1: together,
+// without it what users last chose, see together_mode in src/hooks.js).
+// Together, users untick those they don't want to see: `together`, true by default, is the reference's own
+// (?compare[0][together]=0), it follows it when references move. The primary is always shown.
 const color_from_query = value => {
   if (value === undefined || value === null || value === '') return undefined;
   const color = Number(value);
@@ -117,7 +118,7 @@ const side_from_query = (item, project) => {
     filter: value.filter ?? '',
     label: value.label ?? '',
     color: color_from_query(value.color),
-    together: value.together === '1' || value.together === 'true',
+    together: value.together !== '0' && value.together !== 'false',
   };
 };
 
@@ -129,7 +130,7 @@ const side_to_query = (side, project) => {
     project: side.project && side.project !== project ? side.project : undefined,
     label: side.label || undefined,
     color: side.color ?? undefined,
-    together: side.together ? '1' : undefined,
+    together: side.together === false ? '0' : undefined,
   };
   const fields = Object.entries(value).filter(([, v]) => v !== undefined);
   return fields.length === 1 && fields[0][0] === 'commit' ? value.commit : Object.fromEntries(fields);
@@ -161,7 +162,9 @@ const new_side = selected => ({
 // Only what goes in the URL: references from useComparison() have more
 // References from useComparison() have their color, from side_color (src/sideColors.js), with its number
 const color_number = color => typeof color === 'object' ? color?.slot : color;
-const as_side = ({ project, commit_id, batch, filter, label, color, together }) => ({ project, commit_id, batch, filter, label, color: color_number(color), together: !!together });
+// ...and say in `ticked` if users ticked them: their `together` is if they are shown together, e.g. not one at a time
+const is_ticked = side => (side.ticked ?? side.together) !== false;
+const as_side = ({ project, commit_id, batch, filter, label, color, ...side }) => ({ project, commit_id, batch, filter, label, color: color_number(color), together: is_ticked(side) });
 
 // What we call the references: what users called them, else "ref", "ref 2", "ref 3"...
 // The name is given when a reference is added and kept in the URL: moving or removing references doesn't rename the others.
@@ -291,18 +294,13 @@ export const references_changes = (references, index, color_new) => {
   };
 };
 
-// The references, with the primary ticked when others are shown together with it: if another reference takes its
-// place, it stays shown. With no ticks, nothing changes: users see one reference at a time.
-const keep_shown = ({ references, ref_index }) => references.some((r, i) => i !== ref_index && r.together)
-  ? references.map((r, i) => i === ref_index ? { ...r, together: true } : r)
-  : references;
-
 // What to change in the selection to... (pure: they take the selection, and return the changes for updateSelected)
 // ...compare the new commit with another of the references. As many stay shown together: the one it replaces takes its
 // tick (shown if it was), so that cycling through the references (r) doesn't end up showing, and loading, them all.
 export const show_reference = (selected, index) => {
   const { references, ref_index, color_new } = selected;
-  const swapped = references.map((r, i) => i === ref_index ? { ...r, together: !!references[index]?.together } : r);
+  if (!references[index]) return {};
+  const swapped = references.map((r, i) => i === ref_index ? { ...as_side(r), together: is_ticked(references[index]) } : r);
   return references_changes(swapped, index, color_new);
 };
 
@@ -310,22 +308,25 @@ export const show_reference = (selected, index) => {
 export const toggle_together = (selected, index) => {
   const { references, ref_index, color_new } = selected;
   if (index === ref_index || !references[index]) return {};
-  return references_changes(references.map((r, i) => i === index ? { ...r, together: !r.together } : r), ref_index, color_new);
+  return references_changes(references.map((r, i) => i === index ? { ...as_side(r), together: !is_ticked(r) } : r), ref_index, color_new);
 };
 
-// ...show all the references together
-export const show_all_together = selected =>
-  references_changes(selected.references.map(r => ({ ...r, together: true })), selected.ref_index, selected.color_new);
-
-// ...compare with one reference at a time
-export const show_one_at_a_time = selected =>
-  references_changes(selected.references.map(r => ({ ...r, together: false })), selected.ref_index, selected.color_new);
+// ...show the references together ('all'), or one at a time ('one'): the link says it, whatever its readers last chose.
+// Together with every other reference unticked would show nothing more: they are ticked again.
+export const set_together_mode = (selected, mode) => {
+  const { references, ref_index, color_new } = selected;
+  const none_ticked = references.length > 1 && !references.some((r, i) => i !== ref_index && is_ticked(r));
+  return {
+    ...(mode === 'all' && none_ticked ? references_changes(references.map(r => ({ ...as_side(r), together: true })), ref_index, color_new) : {}),
+    together_mode: mode,
+  };
+};
 
 // ...add a reference, and show it. If we have it already, we show it. It's named "ref 2", "ref 3"... unless given a label,
-// and gets the first free color. When references are shown together it joins them: it's the primary, next to the others.
+// and gets the first free color. It's ticked, like the others by default: shown with them when they are together.
 export const add_reference = (selected, side) => {
   const { color_new } = selected;
-  const references = with_colors(keep_shown(selected), color_new);
+  const references = with_colors(selected.references, color_new);
   const side_ = { project: selected.project, batch: 'default', filter: '', ...side, color: undefined };
   const existing = references.findIndex(r => same_side(r, side_));
   if (existing >= 0) return references_changes(references, existing, color_new);
@@ -339,7 +340,7 @@ export const add_reference = (selected, side) => {
 export const remove_reference = (selected, index) => {
   const { references, ref_index, color_new } = selected;
   if (references.length <= 1) return {};
-  const remaining = with_colors(with_names(keep_shown(selected)), color_new).filter((_, i) => i !== index);
+  const remaining = with_colors(with_names(references), color_new).filter((_, i) => i !== index);
   const shown = index === ref_index ? Math.min(index, remaining.length - 1) : ref_index - (index < ref_index ? 1 : 0);
   return references_changes(remaining, shown, color_new);
 };
@@ -347,9 +348,8 @@ export const remove_reference = (selected, index) => {
 // ...swap a reference with the top results: it goes in the top bar, and the top results take its place in the
 // references, shown in the bottom bar. Both bars change, nothing else: the same comparison, reversed.
 // Colors follow their results: the top bar takes the reference's color, and the reference's place the top's.
-// The references shown together with the one that was in the bottom bar stay shown, and so does it.
 export const swap_with_top = (selected, index) => {
-  const references = keep_shown(selected);
+  const { references } = selected;
   const side = references[index];
   if (!side?.commit_id || !selected.new_commit_id) return {};
   const [color_new, ...colors] = side_colors(selected.color_new, references);
@@ -380,8 +380,7 @@ export const move_reference = (selected, from, to) => {
 // ...add a copy of a reference next to it, and show it: to change its batch or filter, and compare both.
 // `name`: what the reference is called, e.g. its milestone's name: the copy is "<name> copy", in the first free color
 export const duplicate_reference = (selected, index, name) => {
-  const { color_new } = selected;
-  const references = keep_shown(selected);
+  const { references, color_new } = selected;
   const named = with_colors(with_names(references.map(as_side)), color_new);
   const copy = { ...named[index], label: copy_name(references, index, name), color: undefined };
   return references_changes([...named.slice(0, index + 1), copy, ...named.slice(index + 1)], index + 1, color_new);
@@ -443,8 +442,8 @@ export const selection_from_url = (match, search) => {
     filter: text_param(query.filter_ref),
     label: query.label_ref ?? "",
     color: color_from_query(query.color_ref),
-    // the reference shown needs no tick
-    together: false,
+    // the reference shown is always shown
+    together: true,
   };
   const other_refs = (as_list(query.compare) ?? []).filter(item => item !== '').map(item => side_from_query(item, project));
   const ref_index = Math.min(Math.max(0, Math.trunc(Number(query.ref_index)) || 0), other_refs.length);
@@ -493,6 +492,8 @@ export const selection_from_url = (match, search) => {
     selected_views,
     selected_metrics: as_list(query.selected_metrics),
     date_range: date_range_from_query(query),
+    // several references together in the image viewer ('all'), or one at a time ('one'). null: what users last chose
+    together_mode: query.together === '1' || query.together === 'true' ? 'all' : query.together === '0' || query.together === 'false' ? 'one' : null,
     // how runs find their reference run, beyond the default: ?pair= ?prefer= ?pin= (src/matching/rules.js)
     reference_rules: rules_from_query(query),
   };
@@ -576,6 +577,14 @@ export const url_for_selection = (selected, { pathname, search }, defaults = {})
     const value = other_refs_to_query(other_refs ?? [], project);
     if (value === undefined) delete query.compare;
     else query.compare = value;
+    selected = rest;
+  }
+
+  if ('together_mode' in selected) {
+    const { together_mode, ...rest } = selected;
+    if (together_mode === 'all') query.together = '1';
+    else if (together_mode === 'one') query.together = '0';
+    else delete query.together;
     selected = rest;
   }
 

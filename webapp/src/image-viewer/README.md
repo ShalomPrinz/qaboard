@@ -104,20 +104,22 @@ Give the other images in `more`: each image then shows in a tile, in the order g
 />
 ```
 
-One image is the **anchor**, by default the first: the others are compared with it. Users click an image's name to
-make it the anchor (`anchor`, `onAnchorChange`: its place in the list). The modes become:
+One image is the **anchor**, by default the first: the others are compared with it, like an image with its reference.
+It has an anchor icon on its name. Users click another image's name to make it the anchor (`anchor`, `onAnchorChange`:
+its place in the list); an image with `canAnchor: false` can't be. QA-Board controls it: the anchor is the reference
+selected in the page's tabs, and clicking a name selects its tab. The modes become:
 
 - **Grid**: every image in its tile, with how far it is from the anchor
-- **Wipe**: the anchor against each image, the dividers move together
+- **Wipe**: each image against the anchor (image | anchor), the dividers move together
 - **Single**: one image at a time, in place: <kbd>t</kbd> or a click shows the next, <kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>9</kbd>
   the image of that number (`shown`, `onShownChange`)
-- **Difference**: the anchor, and its difference with each image
+- **Difference**: the anchor, and each image's difference with it (image − anchor)
 
 The tiles are the same in every mode but single: switching modes moves nothing. Above the images, a panel shows the
 pixel under the pointer in every image with its difference from the anchor's, and **how far apart** the images are:
 the mean difference of the colors of their views, for every pair, so that it follows the zoom. Clicking a pair shows
 those two images alone, with everything the viewer does for two images (blind test, the regions, the difference's
-legend...); **All N images** goes back. `details` / `onDetailsChange` hides the panel, e.g. to remember that users
+legend...); **All N images** goes back. With an image picked in the **vs** menu, it takes the anchor's place. `details` / `onDetailsChange` hides the panel, e.g. to remember that users
 closed it (with two images, it hides the values under the pointer).
 
 What compares two images (the analysis panel, the values' difference in the readout of a pair) compares the anchor

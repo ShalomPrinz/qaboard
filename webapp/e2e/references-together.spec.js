@@ -1,5 +1,5 @@
-// Several references shown together: the image viewer shows the new image and every ticked reference, each in its
-// tile, compared with an anchor. Against a mocked API and IIIF image server.
+// Several references are shown together: the image viewer shows the new image and every reference stacked, each in
+// its tile in the order of the tabs, compared with the reference selected (the anchor). Against a mocked API and IIIF image server.
 import { test, expect } from '@playwright/test';
 
 import { info, tile } from './fixtures/iiif';
@@ -81,31 +81,25 @@ test.afterEach(() => {
   expect(errors, 'errors in the browser console').toEqual([]);
 });
 
-test('ticks references to see them together in the image viewer, compared with an anchor', async ({ page }) => {
+// the names on the images, in order
+const names = viewer => viewer.locator('.qiv-stage > .qiv-pane .qiv-label, .qiv-tile > .qiv-label:not(.qiv-label-quiet)').evaluateAll(labels => labels
+  .map(label => ({ left: label.closest('.qiv-pane, .qiv-tile').getBoundingClientRect().left, top: label.closest('.qiv-pane, .qiv-tile').getBoundingClientRect().top, text: label.textContent.replace(/\d+×\d+$/, '') }))
+  .sort((a, b) => a.top - b.top || a.left - b.left).map(label => label.text));
+
+test('shows the references stacked together in the image viewer, compared with the one selected', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 1000 });
   await page.goto(`/${project}/commit/new?reference=ref&compare=old&compare=alt&selected_views=output-list`);
   const viewer = page.locator('.qiv').first();
-  await expect(viewer.locator('.qiv-pane')).toHaveCount(2);
-  await expect(viewer.locator('.qiv-tile')).toHaveCount(0);
   await expect(page.getByRole('tab')).toHaveCount(3);
-
-  // One more reference: its tile is there before its runs
-  await page.getByRole('checkbox', { name: 'Show ref 2 together with ref' }).click();
-  await expect(page).toHaveURL(/together/);
-  await expect(viewer.locator('.qiv-tile')).toHaveCount(2);
-  await expect(viewer.getByText('Loading ref 2…')).toBeVisible();
-  const stage = await viewer.locator('.qiv-stage').boundingBox();
-  await expect(viewer.getByText('Loading ref 2…')).toHaveCount(0);
-  // ...and nothing moved when they came
-  expect(await viewer.locator('.qiv-stage').boundingBox()).toEqual(stage);
-
-  // All of them: new (the anchor), ref, ref 2, and ref 3, which says it's the same file as ref
-  await page.getByRole('button', { name: 'All 3 together' }).click();
+  // Together by default: new, then the references in the order of their tabs. Tiles are there before their runs.
   await expect(viewer.locator('.qiv-tile')).toHaveCount(3);
-  await expect(viewer.locator('.qiv-label')).toHaveText([/^newanchor/, /^ref\d/, /^ref 2\d/, /^ref 3 = ref\d/]);
-  // how far each image is from the anchor: the square, the brightness
-  await expect(viewer.locator('.qiv-tile-note')).toHaveText([/^0\.\d from new$/, /^\d\d\.\d from new$/, /^0\.\d from new$/]);
-  await expect(viewer.getByTitle('ref and ref 3 = ref: the same in this view. Click to compare them alone')).toHaveText('same');
+  await expect(viewer.getByText(/^Loading/)).toHaveCount(0);
+  // ref is selected: it's the anchor. ref 3 is the same file.
+  await expect.poll(() => names(viewer)).toEqual(['new', 'ref', 'ref 2', 'ref 3 = ref']);
+  await expect(viewer.locator('.qiv-stage > .qiv-pane .qiv-label')).toHaveText(/^ref/);
+  // how far each image is from the anchor: the square, the brightness, nothing
+  await expect(viewer.locator('.qiv-tile-note')).toHaveText([/^0\.\d from ref$/, /^\d\d\.\d from ref$/, 'same as ref here']);
+  const stage = await viewer.locator('.qiv-stage').boundingBox();
 
   // The modes compare each image with the anchor
   await page.mouse.move(stage.x + 50, stage.y + 50);
@@ -113,40 +107,80 @@ test('ticks references to see them together in the image viewer, compared with a
   await expect(viewer.locator('.qiv-tile .qiv-diff')).toHaveCount(3);
   await page.keyboard.press('2');
   await expect(viewer.getByRole('separator')).toHaveCount(3);
-  // one at a time, in every run's viewer
+  // one at a time in place, in every run's viewer
   await page.keyboard.press('3');
-  await expect(viewer.getByRole('radio', { name: /^1 new/ })).toBeChecked();
+  await expect(viewer.getByRole('radio', { name: /2 ref$/ })).toBeChecked();
   await page.keyboard.press('t');
-  await expect(viewer.getByRole('radio', { name: /^2 ref/ })).toBeChecked();
-  await expect(page.locator('.qiv').nth(1).getByRole('radio', { name: /^2 ref/ })).toBeChecked();
-  await page.keyboard.press('Shift+Digit3');
   await expect(viewer.getByRole('radio', { name: /^3 ref 2/ })).toBeChecked();
+  await expect(page.locator('.qiv').nth(1).getByRole('radio', { name: /^3 ref 2/ })).toBeChecked();
+  await page.keyboard.press('Shift+Digit1');
+  await expect(viewer.getByRole('radio', { name: /^1 new/ })).toBeChecked();
   await page.keyboard.press('1');
 
-  // Another anchor, for every run
+  // Clicking an image's name selects its reference, like its tab: it's the anchor, in every run, and nothing moves
   await viewer.getByRole('button', { name: /^ref 2/ }).click();
-  await expect(viewer.locator('.qiv-pane .qiv-label')).toHaveText(/^ref 2anchor/);
-  await expect(page.locator('.qiv').nth(1).locator('.qiv-pane .qiv-label')).toHaveText(/^ref 2anchor/);
+  await expect(page.getByRole('tab', { name: /^Reference 2:/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/reference=old/);
+  await expect(viewer.locator('.qiv-stage > .qiv-pane .qiv-label')).toHaveText(/^ref 2/);
+  await expect(page.locator('.qiv').nth(1).locator('.qiv-stage > .qiv-pane .qiv-label')).toHaveText(/^ref 2/);
+  await expect.poll(() => names(viewer)).toEqual(['new', 'ref', 'ref 2', 'ref 3 = ref']);
   await expect(viewer.locator('.qiv-tile-note').first()).toHaveText(/^\d\d\.\d from ref 2$/);
+  expect(await viewer.locator('.qiv-stage').boundingBox()).toEqual(stage);
+  // the new image can't be the anchor
+  await expect(viewer.getByRole('button', { name: /^new/ })).toHaveAttribute('title', '');
+
+  // A tab, or r, does the same
+  await page.getByRole('tab', { name: /^Reference 1:/ }).click();
+  await expect(viewer.locator('.qiv-stage > .qiv-pane .qiv-label')).toHaveText(/^ref/);
+  await expect.poll(() => names(viewer)).toEqual(['new', 'ref', 'ref 2', 'ref 3 = ref']);
 
   // A pair alone: the viewer for two images, then all of them again
   await viewer.getByTitle(/^new and ref[.:]/).first().click();
   await expect(viewer.locator('.qiv-tile')).toHaveCount(0);
   await expect(viewer.getByRole('button', { name: 'Blind test' })).toBeVisible();
+
+  // Dragging a tab reorders the images, the pair shown alone stays the same two, the anchor stays the anchor
+  await page.getByRole('tab', { name: /^Reference 3:/ }).dragTo(page.getByRole('tab', { name: /^Reference 1:/ }), { targetPosition: { x: 5, y: 10 } });
+  await expect(page.getByRole('tab', { name: /^Reference 1: ref 3/ })).toBeVisible();
+  await expect.poll(() => names(viewer)).toEqual(['new', 'ref']);
   await viewer.getByRole('button', { name: 'All 4 images' }).click();
   await expect(viewer.locator('.qiv-tile')).toHaveCount(3);
+  await expect.poll(() => names(viewer)).toEqual(['new', 'ref 3', 'ref = ref 3', 'ref 2']);
+  await expect(viewer.locator('.qiv-stage > .qiv-pane .qiv-label')).toHaveText(/^ref = ref 3/);
+  await expect(page.locator('.qiv').nth(1).locator('.qiv-tile')).toHaveCount(3);
   await page.screenshot({ path: test.info().outputPath('together.png') });
 
-  // One at a time again: the reference alone, like before
-  await page.getByRole('button', { name: 'One at a time' }).click();
+  // Leaving a reference out, then one at a time: the reference alone, like before
+  await page.getByRole('checkbox', { name: /^Show ref 2 / }).click();
+  await expect(viewer.locator('.qiv-tile')).toHaveCount(2);
+  await expect.poll(() => names(viewer)).toEqual(['new', 'ref 3', 'ref = ref 3']);
+  await page.getByRole('radio', { name: 'One at a time' }).click();
   await expect(viewer.locator('.qiv-tile')).toHaveCount(0);
-  await expect(page).not.toHaveURL(/together/);
+  await expect(page).toHaveURL(/together=0/);
+  // remembered for other pages
+  await page.goto(`/${project}/commit/new?reference=ref&compare=old&selected_views=output-list`);
+  await expect(viewer.locator('.qiv-pane')).toHaveCount(2);
+  await expect(viewer.locator('.qiv-tile')).toHaveCount(0);
+  await page.getByRole('radio', { name: 'Together' }).click();
+  await expect(viewer.locator('.qiv-tile')).toHaveCount(2);
+  await page.waitForLoadState('networkidle');
+});
+
+test('keeps the tiles in place while a reference loads', async ({ page }) => {
+  await page.setViewportSize({ width: 1500, height: 1000 });
+  await page.goto(`/${project}/commit/new?reference=ref&compare=old&selected_views=output-list`);
+  const viewer = page.locator('.qiv').first();
+  await expect(viewer.locator('.qiv-tile')).toHaveCount(2);
+  await expect(viewer.getByText('Loading ref 2…')).toBeVisible();
+  const stage = await viewer.locator('.qiv-stage').boundingBox();
+  await expect(viewer.getByText('Loading ref 2…')).toHaveCount(0);
+  expect(await viewer.locator('.qiv-stage').boundingBox()).toEqual(stage);
   await page.waitForLoadState('networkidle');
 });
 
 test('shows the images of each run in one row, as a contact sheet', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 1000 });
-  await page.goto(`/${project}/commit/new?reference=ref&compare[0][commit]=old&compare[0][together]=1&selected_views=output-list`);
+  await page.goto(`/${project}/commit/new?reference=ref&compare=old&selected_views=output-list`);
   const viewer = page.locator('.qiv').first();
   await expect(viewer.locator('.qiv-tile')).toHaveCount(2);
   await expect(viewer.getByRole('radiogroup', { name: 'Compare' })).toBeVisible();
@@ -157,7 +191,6 @@ test('shows the images of each run in one row, as a contact sheet', async ({ pag
   await expect(viewer.getByRole('radiogroup', { name: 'Compare' })).toBeHidden();
   const tops = await viewer.locator('.qiv-tile').evaluateAll(tiles => tiles.map(tile => tile.getBoundingClientRect().top));
   expect(new Set(tops).size).toBe(1);
-  await page.screenshot({ path: test.info().outputPath('contact-sheet.png') });
   await viewer.getByRole('button', { name: 'Show the toolbar' }).click();
   await expect(viewer.getByRole('radiogroup', { name: 'Compare' })).toBeVisible();
   // remembered

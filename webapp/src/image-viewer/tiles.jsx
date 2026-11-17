@@ -21,7 +21,8 @@ export const Tile = ({
   anchorSize,
   // the anchor's viewer: the tile shows the same region
   leader,
-  // 'side-by-side' and 'single': the image, 'wipe': anchor | image, 'difference': anchor − image
+  // 'side-by-side' and 'single': the image, 'wipe': image | anchor, 'difference': image − anchor (like the image and its
+  // reference when there are two)
   mode,
   // another image shows in its place (single mode)
   hidden = false,
@@ -107,10 +108,10 @@ export const Tile = ({
     onPointerMove={event => controller.hover('a', event.clientX, event.clientY)}
     onPointerLeave={() => controller.unhover()}
   >
-    {compared && <div className="qiv-pane" style={{ ...size, left: 0, zIndex: 1, visibility: mode === 'difference' ? 'hidden' : undefined }}>
+    {compared && <div className="qiv-pane" style={{ ...size, left: 0, zIndex: 2, visibility: mode === 'difference' ? 'hidden' : undefined, clipPath: mode === 'wipe' ? `inset(0 0 0 ${wipe * width}px)` : undefined }}>
       <div className="qiv-osd" ref={element => { if (element) controller.attach('b', element); }} style={{ filter }} />
     </div>}
-    <div className="qiv-pane" style={{ ...size, left: 0, zIndex: 2, clipPath: mode === 'wipe' && compared ? `inset(0 0 0 ${wipe * width}px)` : undefined }}>
+    <div className="qiv-pane" style={{ ...size, left: 0, zIndex: 1 }}>
       <div className="qiv-osd" ref={element => { if (element) controller.attach('a', element); }} style={{ filter }} />
       {available && (mode === 'side-by-side' || mode === 'single') && <PixelValues
         controller={controller}
@@ -125,19 +126,19 @@ export const Tile = ({
       />}
     </div>
     {compared && mode === 'difference' && <div className="qiv-pane qiv-diff-pane" style={{ ...size, left: 0, zIndex: 3 }}>
-      <DiffLayer controller={controller} order={['b', 'a']} diff={diff} active={shown} width={width} height={height} onError={setDiffError} />
+      <DiffLayer controller={controller} order={['a', 'b']} diff={diff} active={shown} width={width} height={height} onError={setDiffError} />
       {diff_error && <div className="qiv-message qiv-pane-message">{diff_error}</div>}
     </div>}
     {shown && regions?.length > 0 && <RegionOutlines controller={controller} pane="a" regions={regions} active={activeRegion} size={anchorSize} paneSize={own_size} onSelect={onSelectRegion} />}
     <Crosshair controller={controller} pane="a" />
     {mode === 'wipe' && compared && <>
-      <span className="qiv-label qiv-label-left qiv-label-quiet" title={`Left of the divider: ${anchorName}, the anchor`}>{anchorName}</span>
+      <span className="qiv-label qiv-label-right qiv-label-quiet" title={`Right of the divider: ${anchorName}, the anchor`}><Icon icon="anchor" size={12} className="qiv-label-icon" />{anchorName}</span>
       <div
         className="qiv-wipe"
         style={{ left: wipe * width }}
         role="separator"
         aria-orientation="vertical"
-        aria-label={`Wipe ${anchorName} | ${name}`}
+        aria-label={`Wipe ${name} | ${anchorName}`}
         aria-valuenow={Math.round(100 * wipe)}
         aria-valuemin={0}
         aria-valuemax={100}
@@ -166,9 +167,9 @@ export const Tile = ({
     </>}
     {showLabel && <button
       type="button"
-      className={`qiv-label ${mode === 'wipe' && compared ? 'qiv-label-right' : 'qiv-label-left'}`}
+      className={`qiv-label qiv-label-left ${onAnchor ? '' : 'qiv-label-fixed'}`}
       style={{ background: color, color: textColor }}
-      title={available ? `Make ${name} the anchor: the other images are compared with it` : undefined}
+      title={available && onAnchor ? `Compare the other images with ${name}: make it the anchor` : undefined}
       disabled={!available}
       onClick={onAnchor}
       onPointerDown={event => event.stopPropagation()}

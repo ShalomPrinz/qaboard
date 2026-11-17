@@ -13,7 +13,8 @@ import { MODES } from '../../image-viewer/modes';
 import { run_view } from '../runView';
 import { errorMessage, http, isAbort } from '../../api/http';
 import { track } from '../../analytics';
-import { useComparison, useLabels, useSelected, useSiteConfig, useUser } from '../../hooks';
+import { updateSelected, useComparison, useLabels, useSelected, useSiteConfig, useUser } from '../../hooks';
+import { show_reference } from '../../selection';
 import { usePrefsStore } from '../../stores/prefs';
 import { at_most, is_same_data } from '../../utils';
 import { doneAgainInPlace, STALE_WARNING } from '../../utils/attempts';
@@ -152,11 +153,9 @@ const useAdjustmentsStore = create(set => ({
 // random order (from the test's seed and the viewer), called A and B, until users reveal them.
 const usePageComparisonStore = create(set => ({
   swapped: false,
-  // with several references shown together: the image the others are compared with, and the one shown alone in
-  // single mode, by their place (0: new, 1: the reference, then the other references in the order of their tabs)
-  anchor: 0,
-  shown: 0,
-  setAnchor: anchor => set({ anchor }),
+  // with several references shown together: the one shown alone in single mode, 'new' or the reference's id: the same
+  // in every viewer of the page, wherever its tab is
+  shown: null,
   setShown: shown => set({ shown }),
   // { seed, swapped: when it started, revealed }
   blind: null,
@@ -317,27 +316,50 @@ const ImageViewerForRuns = ({
   const identical = is_same_data(path, manifests?.new?.[path], manifests?.reference?.[path_ref]);
   const same_data = identical && output_ref?.id !== output_new.id;
   const together = others.length > 0;
-  const reference_image = referenceImage({ output_ref, path_ref, manifests, image_servers, label: identical ? `${labels.reference} = ${labels.new}` : labels.reference, color: labels.colors.reference });
-  // With other references, the reference keeps its tile whatever happens (identical, missing): the images keep their place
-  const reference = !together ? (identical ? null : reference_image)
-    : reference_image ?? { label: labels.reference, color: labels.colors.reference?.hex, textColor: labels.colors.reference?.text, missing: output_ref ? `No ${path.split('/').pop()} in ${labels.reference}` : `No run of ${labels.reference} matches this one` };
-  // not its placeholder
-  const has_reference = !!reference?.iiif;
-  const more = [];
+  const reference_image = referenceImage({ output_ref, path_ref, manifests, image_servers, label: labels.reference, color: labels.colors.reference });
+  const reference = identical ? null : reference_image;
+  const has_reference = together ? !!reference_image : !!reference;
+  // With other references shown together: the references in the order of their tabs, each in its tile after the new
+  // image. They keep their tile whatever happens (identical, missing, loading), so that the images keep their place.
+  // The one selected (the reference compared everywhere) is the anchor: the image viewer compares the others with it.
+  const selected = useSelected();
+  const primary = useComparison()?.references?.find(r => r.is_shown);
+  const sides = [];
   if (together) {
+    const tabs = [
+      { number: primary?.number ?? 0, id: primary?.id ?? 'reference', label: labels.reference, primary: true },
+      ...others.map(other => ({ number: other.number, id: other.id ?? other.key, label: other.label, other })),
+    ].sort((a, b) => a.number - b.number);
     const shown_sides = [{ label: labels.new, meta: manifests?.new?.[path] }];
-    if (reference_image && !identical) shown_sides.push({ label: labels.reference, meta: manifests?.reference?.[path_ref] });
-    for (const other of others) {
-      const { image: other_image, meta } = otherReferenceImage({ other, path, image_servers, shown: shown_sides });
-      more.push(other_image);
-      if (meta) shown_sides.push({ label: other.label, meta });
+    for (const tab of tabs) {
+      let side_image, meta;
+      if (!tab.primary) {
+        ({ image: side_image, meta } = otherReferenceImage({ other: tab.other, path, image_servers, shown: shown_sides }));
+      } else if (reference_image) {
+        meta = manifests?.reference?.[path_ref];
+        const same = shown_sides.find(side => is_same_data(path, side.meta, meta));
+        side_image = same ? { ...reference_image, label: `${labels.reference} = ${same.label}` } : reference_image;
+      } else {
+        side_image = {
+          label: labels.reference, color: labels.colors.reference?.hex, textColor: labels.colors.reference?.text,
+          missing: output_ref ? `No ${path.split('/').pop()} in ${labels.reference}` : `No run of ${labels.reference} matches this one`,
+        };
+      }
+      sides.push({ ...tab, image: side_image });
+      if (meta) shown_sides.push({ label: tab.label, meta });
     }
   }
+  // the images' places in the viewer: new, then the references
+  const anchor = 1 + sides.findIndex(side => side.primary);
+  const side_ids = ['new', ...sides.map(side => side.id)];
+  // clicking an image's name selects its reference, like its tab does
+  const selectSide = index => {
+    const side = sides[index - 1];
+    if (side && !side.primary) updateSelected(show_reference(selected, side.number - 1));
+  };
   const show_details = usePrefsStore(state => state.imageDetails);
   const setShowDetails = usePrefsStore(state => state.setImageDetails);
   const contact_sheet = usePrefsStore(state => state.imageContactSheet);
-  const page_anchor = usePageComparisonStore(state => state.anchor);
-  const setPageAnchor = usePageComparisonStore(state => state.setAnchor);
   const page_shown = usePageComparisonStore(state => state.shown);
   const setPageShown = usePageComparisonStore(state => state.setShown);
   const compare_with = otherImages({ output_new, path, manifests, image_servers });
@@ -410,13 +432,13 @@ const ImageViewerForRuns = ({
   return <ImageViewer
     className="qaboard-image-viewer"
     style={{ width: fullscreen ? '100%' : at_most(style?.width), maxWidth: '100%' }}
-    image={image}
-    reference={reference}
-    more={more}
-    anchor={page_anchor}
-    onAnchorChange={value => { use('anchor'); setPageAnchor(value); }}
-    shown={page_shown}
-    onShownChange={setPageShown}
+    image={together ? { ...image, canAnchor: false } : image}
+    reference={together ? sides[0].image : reference}
+    more={sides.slice(1).map(side => side.image)}
+    anchor={anchor}
+    onAnchorChange={value => { use('anchor'); selectSide(value); }}
+    shown={side_ids.includes(page_shown) ? side_ids.indexOf(page_shown) : anchor}
+    onShownChange={value => setPageShown(side_ids[value])}
     details={show_details}
     onDetailsChange={setShowDetails}
     compact={contact_sheet && !fullscreen}

@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { distanceMatrix, formatDistance, readCanvas } from './grid';
-import { BaseToggle, Chip, ImageValues, PinnedTag, useImageValue, Values } from './panels';
+import { BaseToggle, ImageValues, PinnedTag, useImageValue, Values } from './panels';
+import { Icon } from './ui';
 
 // Viewers have no name: we number them, to tell React when the list changes
 const ids = new WeakMap();
@@ -78,7 +79,7 @@ const ValueRow = ({ entry, number, point, tiles, base, anchorDisplay }) => {
     {!controller ? <span className="qiv-muted">{name}: {image?.loading ? 'loading…' : 'no image'}</span>
       : !point ? <span className="qiv-muted">{name}{size?.width ? ` ${size.width}×${size.height}` : ''}</span>
       : <ImageValues label={name} intent="neutral" pixel={pixel} display={display} image={value} base={base} />}
-    {entry.anchor && <Chip title="The other images are compared with it">anchor</Chip>}
+    {entry.anchor && <span className="qiv-compare-anchor" title="The anchor: the other images are compared with it"><Icon icon="anchor" size={12} /></span>}
     {delta && <span className="qiv-readout-image qiv-compare-delta" title={`${name} − the anchor, as displayed`}>
       <span className="qiv-readout-label">Δ</span> <Values values={delta} signed />
     </span>}

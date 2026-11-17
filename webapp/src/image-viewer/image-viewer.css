@@ -1972,6 +1972,22 @@
 .qiv-tile-wipe .qiv-label {
   max-width: calc(50% - 12px);
 }
+/* an image that can't be the anchor, e.g. the app compares it with all the others */
+.qiv-tile .qiv-label.qiv-label-fixed {
+  cursor: default;
+}
+.qiv-label .qiv-label-icon {
+  flex: none;
+  margin-right: 4px;
+  fill: currentColor;
+}
+.qiv-compare-anchor {
+  display: inline-flex;
+  color: var(--qiv-text-muted);
+}
+.qiv-compare-anchor .qiv-icon {
+  fill: currentColor;
+}
 .qiv-tile-note {
   position: absolute;
   left: 6px;

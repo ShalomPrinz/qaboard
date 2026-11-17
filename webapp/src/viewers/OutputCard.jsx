@@ -371,6 +371,8 @@ const OutputCard = memo(function OutputCard(props) {
       const output = runs[index];
       const manifest = output?.output_dir_url ? manifests_others[urls.indexOf(manifest_url(output))] : undefined;
       return {
+        // theirs wherever their tab goes, see useReferences
+        id: reference.id,
         key: reference.key,
         label: reference.label,
         color: reference.color,

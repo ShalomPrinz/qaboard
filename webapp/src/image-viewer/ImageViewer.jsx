@@ -12,7 +12,7 @@ import { describeAdjustments, filterPrimitives, normalizeAdjustments, changedAdj
 import { DEFAULT_DIFF, normalizeDiff } from './metrics';
 import { regionAsYaml } from './regions';
 import { DEFAULT_MODE, MODES } from './modes';
-import { imageColors, normalizeImage } from './sources';
+import { imageColors, imageKey, normalizeImage } from './sources';
 import { PixelTiles } from './pixelTiles';
 import { ALL_CHANNELS } from './histogram';
 import { ANALYSES, normalizeAnalysis } from './analysis';
@@ -179,23 +179,26 @@ export const ImageViewer = ({
   const reference_name = normalizeImage(reference)?.label ?? 'reference';
   // "the reference", or its own name, e.g. "ISP v1": as everywhere else
   const the_reference = reference_name === 'reference' ? 'the reference' : reference_name;
-  // All the images compared, in order: the image, its reference (or the image picked instead), then `more`.
-  // Users can look at two of them alone (pair: their indexes), e.g. from how far apart they are.
-  const given = [
-    normalizeImage(image),
-    alternative ? { ...normalizeImage(alternative.image), label: candidateLabel(alternative) } : normalizeImage(reference),
-    ...more.map(normalizeImage),
-  ].filter(Boolean);
+  // All the images compared, in order: the image, its reference, then `more`. With more than two, one is the anchor:
+  // the others are compared with it. The image users picked to compare with instead takes the reference's place, or
+  // with more than two images the anchor's: it's what the others are compared with.
+  const [anchor_setting, setAnchor] = useControllable(anchor_prop, defaultAnchor, onAnchorChange);
+  const sources = [normalizeImage(image), normalizeImage(reference), ...more.map(normalizeImage)];
+  const replaced = !alternative ? -1
+    : sources.filter(Boolean).length > 2 && Number.isInteger(anchor_setting) && anchor_setting > 0 && sources[anchor_setting] ? anchor_setting : 1;
+  const given = sources.map((entry, index) => index === replaced ? { ...normalizeImage(alternative.image), label: candidateLabel(alternative) } : entry).filter(Boolean);
   // more than two: each has its name and its color, also when two of them show alone
   const everything = given.length > 2 ? given.map((entry, index) => ({ ...entry, label: tileName(entry, index), ...tileColor(entry, index) })) : given;
+  // Users can look at two of them alone, e.g. from how far apart they are (pair: the images, by their key: they stay
+  // the same two when the app reorders the images)
   const [pair, setPair] = useState(null);
-  const alone = pair && everything.length > 2 && pair.every(i => hasSource(everything[i])) ? pair : null;
+  const pair_indexes = pair && everything.length > 2 ? pair.map(key => everything.findIndex(entry => hasSource(entry) && imageKey(entry) === key)) : null;
+  const alone = pair_indexes && pair_indexes.every(i => i >= 0) && pair_indexes[0] !== pair_indexes[1] ? pair_indexes : null;
   const list = alone ? alone.map(i => everything[i]) : everything;
   // More than two: each image in its tile, compared with the anchor, by default the first. The viewer's own two panes
   // show the anchor (a) and keep the first of the others (b, hidden: it has its tile like the others), for what
   // compares two images: the values' difference, the analysis.
   const n_way = list.length > 2;
-  const [anchor_setting, setAnchor] = useControllable(anchor_prop, defaultAnchor, onAnchorChange);
   const anchor_index = n_way && !alone && Number.isInteger(anchor_setting) && hasSource(list[anchor_setting]) ? anchor_setting : 0;
   const others = list.map((other, index) => ({ image: other, index })).filter(other => other.index !== anchor_index);
   const second_index = others.find(other => hasSource(other.image))?.index ?? null;
@@ -535,7 +538,7 @@ export const ImageViewer = ({
   const [wipe_all, setWipeAll] = useState(0.5);
   const pickAnchor = index => {
     setAnchor(index);
-    notify(`${tileName(list[index], index)} is the anchor: the other images are compared with it`);
+    notify(`The other images are compared with ${tileName(list[index], index)}`);
   };
 
   // Display adjustments: an SVG filter on the images
@@ -740,7 +743,7 @@ export const ImageViewer = ({
     <Crosshair controller={controller} pane={name} />
     {show_analysis && <GuideLine controller={controller} guide={guide} />}
     {n_way ? name === 'a' && !single && <span className="qiv-label qiv-label-left qiv-primary" title="The anchor: the other images are compared with it. Click another image's name to make it the anchor.">
-      {names.a}<span className="qiv-label-detail">anchor</span>{resolution('a')}
+      <Icon icon="anchor" size={12} className="qiv-label-icon" />{names.a}{resolution('a')}
     </span> : apart && label(name, 'left')}
     {pane_error(name)}
   </div>;
@@ -952,7 +955,7 @@ export const ImageViewer = ({
       base={base}
       onToggleBase={() => setBase(b => b === 10 ? 16 : 10)}
       distances={distances}
-      onPair={(i, j) => setPair([i, j])}
+      onPair={(i, j) => setPair([imageKey(list[i]), imageKey(list[j])])}
       unavailable={getPixels ? null : imageValuesUnavailable}
     />}
     {!n_way && show_details && <Readout
@@ -1007,7 +1010,7 @@ export const ImageViewer = ({
         pixelTiles={tiles}
         base={base}
         onClick={onTileClick}
-        onAnchor={() => pickAnchor(place)}
+        onAnchor={other?.canAnchor === false ? undefined : () => pickAnchor(place)}
         onController={value => registerTile(place, value)}
       />)}
       {n_way && single && <div className="qiv-picks" role="radiogroup" aria-label="The image shown">
@@ -1022,7 +1025,7 @@ export const ImageViewer = ({
           disabled={!hasSource(entry)}
           onClick={() => setShown(index)}
           onPointerDown={event => event.stopPropagation()}
-        >{index + 1} {tileName(entry, index)}{index === anchor_index && <span className="qiv-label-detail">anchor</span>}</button>)}
+        >{index === anchor_index && <Icon icon="anchor" size={12} className="qiv-label-icon" />}{index + 1} {tileName(entry, index)}</button>)}
       </div>}
       {compact && !fullscreen && <button
         type="button"
@@ -1052,7 +1055,7 @@ export const ImageViewer = ({
         {diff_error && <div className="qiv-message qiv-pane-message">{diff_error}</div>}
       </div>}
       <div className="qiv-stage-notes" style={n_way ? { left: slot(anchor_index).left + 6, bottom: stage_height - slot(anchor_index).top - pane_height + 6, maxWidth: pane_width - 12 } : undefined}>
-        {mode === 'difference' && !diff_between && <DiffLegend diff={diff} names={n_way ? [names.a, 'each image'] : [names[first], names[second]]} />}
+        {mode === 'difference' && !diff_between && <DiffLegend diff={diff} names={n_way ? ['each image', names.a] : [names[first], names[second]]} />}
         <ValuesBadge drawn={pixel_source !== 'off' ? values_drawn : null} />
       </div>
       {mode === 'wipe' && !n_way && <>

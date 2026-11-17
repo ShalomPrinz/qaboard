@@ -38,6 +38,8 @@ export const usePrefsStore = create()(persist(
     imageAnalysisValues: 'display',
     // the image viewers show the values under the pointer (and, with several references, how far apart the images are)
     imageDetails: true,
+    // with several references stacked, the image viewers show them all together (else one at a time), unless the page's link says
+    referencesTogether: true,
     // contact sheet: the image viewers show their images in one row, without their toolbar until users ask for it
     imageContactSheet: false,
     // project => what users said of the sensor of its raw images: CFA, black level... (see the image viewer's `sensor`)
@@ -85,6 +87,7 @@ export const usePrefsStore = create()(persist(
     setImageAnalysisValues: values => set({ imageAnalysisValues: values }),
     setImageDetails: shown => set({ imageDetails: !!shown }),
     setImageContactSheet: on => set({ imageContactSheet: !!on }),
+    setReferencesTogether: on => set({ referencesTogether: !!on }),
     setImageSensor: (project, sensor) => set(state => ({ imageSensor: { ...state.imageSensor, [project]: sensor } })),
     // choices: { [group id]: shown }, merged
     setAnnotationGroups: (source, choices) => set(state => ({ annotationGroups: { ...state.annotationGroups, [source]: { ...state.annotationGroups[source], ...choices } } })),
