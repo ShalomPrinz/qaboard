@@ -1479,10 +1479,9 @@ shot('commit/flame-diff', {
 shot('commit/flame-top-functions', {
   project: SL,
   url: d => sharedCache(d, 'steady-high', only('flame')),
-  alt: 'A differential CPU flame graph of the steady-high run, rooted at "all": the shared cache\'s lookup and respond, '
-    + 'with the response rendering under them, are new, in orange, the model\'s forward pass is blue. Under it, the Top '
-    + 'functions table lists each function\'s self and total time, in the profile\'s unit and in %, and its change in '
-    + 'percentage points against main, the biggest increase first.',
+  alt: 'A differential CPU flame graph of the steady-high run: the shared cache\'s lookup and respond are new, in '
+    + 'orange, the model\'s forward pass is blue. Under it, Top functions lists each function\'s self and total time '
+    + 'and its change in percentage points against main, the biggest increase first.',
   caption: 'The flame graph diff of the shared cache, and under it Top functions: what takes a bigger share of the '
     + 'profile, the biggest increase first.',
   viewport: { width: 1760, height: 1400 },

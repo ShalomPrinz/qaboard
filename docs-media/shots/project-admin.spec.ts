@@ -32,10 +32,9 @@ shot('project-admin/gate', {
   project: 'serving-latency',
   login: ADMIN,
   url: d => `${d.baseUrl}/${GATEWAY}/admin/gate`,
-  alt: 'The Quality gate tab of kitefin/inference-gateway, as an owner: the rules of the reference\'s qaboard.yaml '
-    + '(p99 and throughput may get 10% and 5% worse), then the project rules no commit can change: p99 10% for every '
-    + 'run, throughput 5% only for qa batch capacity, no failed run, waiting for the ci batch, and "Fail the gate" when '
-    + 'a commit loosens its own rules.',
+  alt: 'The Quality gate tab of kitefin/inference-gateway: the reference\'s qaboard.yaml rules, then the project '
+    + 'rules: p99 10% for every run, throughput 5% only for qa batch capacity, no failed run, wait for the ci batch, '
+    + 'and "Fail the gate" when a commit loosens its rules.',
   caption: 'Owners add rules that every commit is held to, whatever its qaboard.yaml says, here one only for the capacity batch.',
   viewport: { width: 1440, height: 1200 },
   actions: async ui => {

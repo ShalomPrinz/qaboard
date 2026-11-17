@@ -41,9 +41,8 @@ shot('admin/settings', {
   login: ADMIN,
   url: d => `${d.baseUrl}/admin/settings`,
   alt: 'Admin → Settings: a search box and filters (All, Changed, From the environment, Secrets), the groups of '
-    + 'settings on the left (Sign-in, Projects and access, Git hosts, Jenkins, Email...), and the Sign-in settings: '
-    + 'each with its description, its variable, where its value comes from (Default, Saved here, Environment) and a '
-    + 'switch, choices or a text field.',
+    + 'settings (Sign-in, Projects and access, Git hosts...), and the Sign-in settings, each with its description, '
+    + 'its variable, where its value comes from and a switch, choices or a text field.',
   caption: 'Change settings without restarting the server. Click a badge to see where a value comes from: those set in the server\'s environment can only be changed there.',
   actions: async ui => {
     await ui.page.getByTestId('setting-ingest.auth').waitFor();
