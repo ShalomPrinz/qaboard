@@ -144,6 +144,18 @@ def test_login_required_checks_project_permissions(auth, dummy_app, monkeypatch)
     assert auth.login_required(handler)() == "OK"
 
 
+def test_login_required_read_tokens_on_posts_that_only_read(auth, dummy_app, monkeypatch):
+  # e.g. "where do these images differ": a POST with a JSON body that changes nothing
+  monkeypatch.setattr(auth, "get_current_user", lambda to_jsonify: {"is_authenticated": True, "user_name": "arthurf"})
+  monkeypatch.setattr(auth, "is_login_restricted", False)
+  token = SimpleNamespace(user=SimpleNamespace(id=1), token=SimpleNamespace(), has_scope=lambda scope: scope == "read", allows_project=lambda project: True)
+  with dummy_app.test_request_context("/api/v1/output/image/diff", method="POST"):
+    g.actor = token
+    response, status = auth.login_required(lambda: "OK")()
+    assert status == 403 and response.get_json()["required"] == "act"
+    assert auth.login_required(auth.reads_only(lambda: "OK"))() == "OK"
+
+
 @pytest.mark.parametrize("value, expected", [
   (None, False), ("", False), ("false", False), ("False", False), ("0", False), ("no", False), ("off", False),
   ("true", True), ("True", True), ("1", True), ("yes", True),

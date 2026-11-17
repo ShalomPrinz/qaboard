@@ -328,6 +328,7 @@ paths:
       tags: [Runs]
       operationId: getRun
       summary: Get a run
+      description: The run, and where it is (its project, commit and batch), e.g. to find its reference's run with the compare API.
       parameters:
         - $ref: "#/components/parameters/outputId"
       responses:
@@ -335,7 +336,15 @@ paths:
           description: The run.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/Run"}
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Run"
+                  - type: object
+                    properties:
+                      project: {type: string, description: The run's project.}
+                      commit_id: {type: string, description: The commit of the run's batch.}
+                      batch_id: {type: integer}
+                      batch_label: {type: string, description: "The batch's label (`qa --label`), `default` for the CI's."}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}

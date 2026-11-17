@@ -56,6 +56,11 @@ app's **Script** button writes it; `GET /api/v1/config` gives `cli_requirements`
 ## Did my change help? (before saying so)
 A change is better when its runs beat the *same* runs on the reference, not when a mean moved.
 
+When the `qaboard` MCP server is connected (`qa mcp`, https://samsung.github.io/qaboard/docs/mcp), its tools do the
+steps below for you: `compare` (step 3-4, with the tests that moved most and a sign test), `failures` (failed runs
+grouped by error, new or not), `look_at_output` (a run's image next to the reference's, crops of where they differ, or
+a text diff), `metric_history`, `check_gate` (step 2). Still run the batch (step 1) and report with the links they give.
+
 1. Run the batch the project uses in CI, shared under a label:
    `qa --share --label <topic> batch ci` (prints the results URL). Local-only: `qa batch ci` writes to `output/`.
    On a pushed commit whose CI saved its artifacts, prefer `qa --label <topic> batch --commit <sha> ci`: QA-Board runs

@@ -186,6 +186,7 @@ const sidebars: SidebarsConfig = {
         "apis",
         "http-api",
         "agents",
+        "mcp",
         "metadata-integration-external-databases",
       ],
     },

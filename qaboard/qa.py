@@ -65,7 +65,7 @@ def qa(ctx, platform, configurations, label, tuning, tuning_filepath, dryrun, sh
   # One usage event per command, sent when it ends (qaboard/analytics.py), never from CI
   analytics.start(ctx.invoked_subcommand, share=share, tuning=bool(tuning or tuning_filepath), dryrun=dryrun, offline=offline)
   # Signing in is global, per server: it doesn't need a project
-  if ctx.invoked_subcommand in ('auth', 'runs'):
+  if ctx.invoked_subcommand in ('auth', 'runs', 'mcp'):
     return
   # Local runs save their results in output/: only some commands need the storage
   needed_by = storage_needed_by(ctx.invoked_subcommand, share, is_ci)
@@ -1261,6 +1261,10 @@ qa.add_command(gate)
 
 from .auth import auth
 qa.add_command(auth)
+
+
+from .mcp_server import mcp_command
+qa.add_command(mcp_command)
 
 
 @qa.command(name='runs')

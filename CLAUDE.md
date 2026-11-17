@@ -101,11 +101,17 @@ uv sync --extra dev     # Install with dev dependencies
 out: `docs/rfcs/python-sdk-runs.md` (next steps: `python-sdk-runs-follow-ups.md`); user docs: `website/docs/logging-from-code.mdx`.
 What `qa` and the SDK send with results is built in one place, `qaboard/payloads.py`.
 
+`qa mcp` (`qaboard/mcp_server.py`, the `mcp` extra) serves read-only MCP tools shaped for tasks, not one per endpoint:
+compare with the reference, failures grouped by error, outputs next to the reference's, metrics over commits. Their
+answers are built in `qaboard/evidence.py` (no MCP dependency); `qaboard/mcp_app.html` is the MCP App hosts render.
+Design and what's left: `docs/rfcs/mcp-server.md`; user docs: `website/docs/mcp.mdx`. Tests: `tests/test_mcp_server.py`
+(against `tests/fake_qaboard.py`); the app in a real host: `tests/mcp_app/README.md`.
+
 ### Runners
 `qa batch` starts runs with a runner (`qaboard/runners/`): local, lsf, celery, dask (workers on LSF, Slurm, PBS, SGE,
 HTCondor, OAR, Moab, Kubernetes or local, `runners.dask.cluster.type`), kubernetes (Indexed Jobs), windows (Jenkins).
 Optional dependencies are extras: `uv sync --extra dev --extra celery --extra dask --extra kubernetes --extra dask-kubernetes`
-(CI's python 3.13 job installs them all, 3.11 none). `qa doctor [--runner X] [--test-job]` checks a setup and prints
+(CI's python 3.13 job installs them all, 3.11 none; `--extra mcp` for `qa mcp`). `qa doctor [--runner X] [--test-job]` checks a setup and prints
 fixes (runners implement `doctor()`). The server starts/stops batches with `QABOARD_TUNING_RUNNER` (`backend/backend/runner_jobs.py`,
 `local_jobs.py`). `qa batch --commit <sha>` (`qaboard/on_server.py`) has the server start a batch on a commit through the
 web app's tuning endpoints (`backend/backend/api/tuning.py`, documented in `backend/backend/openapi.yaml`). Design and trust model: `docs/design/kubernetes-runner.md`; known limits: `docs/warts.md` (Runners).
