@@ -556,14 +556,16 @@ class ActiveRun:
     """
     Chooses which value of a series is the run's metric, after `start_run()`: `run.set_summary("val/loss", "min")`.
     `how` is "last", "min", "max", "mean" or "none", like `start_run(summary=...)`; `series` a name or a pattern,
-    "val/*". It applies to what was logged before too.
+    "val/*". It applies to what was logged before too. A series' own name wins over patterns, and a pattern set
+    here over those set before.
     """
     if not isinstance(series, str) or not series:
       raise TypeError(f"run.set_summary() takes the name of a series, or a pattern like 'val/*', not {series!r}")
     if how not in SUMMARIES:
       raise ValueError(f"run.set_summary({series!r}, {how!r}): expected one of {', '.join(SUMMARIES)}")
     with self._lock:
-      self._summaries[series] = how
+      # patterns are tried in order: the newest first
+      self._summaries = {series: how, **{k: v for k, v in self._summaries.items() if k != series}}
       self._changed = True
 
   @property
@@ -981,6 +983,10 @@ class ActiveRun:
       return True
 
   def _finish(self, failed: bool, error: Union[BaseException, str, None] = None) -> None:
+    if os.getpid() != self._pid:
+      # a forked worker's copy of the run: ending it would write the parent's files, and tell the server it ended
+      self._warn_once(f"fork:{os.getpid()}", f"WARNING: run.finish() in another process than the run's ({os.getpid()}): ignored. The process that called start_run() ends it.")
+      return
     with self._lock:
       if self._finished:
         return

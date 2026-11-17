@@ -13,29 +13,38 @@ wandb by changing its import, and keep the rest.
 Experimental, to evaluate QA-Board with the scripts you have. It is a thin mapping onto `start_run()` and `ActiveRun`
 (qaboard/active_run.py); user docs: website/docs/logging-from-code.mdx, "Coming from Weights & Biases". Nothing here
 imports wandb, which doesn't need to be installed. What QA-Board doesn't do warns once and does nothing: an
-unsupported call never ends a training.
+unsupported call never ends a training. Only `init()` raises, when QA-Board can't make the run (no project, a wrong
+`qaboard={...}`), and what would give files that don't exist (`use_artifact().download()`). When the run can't start
+later, it says why once, and the training goes on without it.
 
 A QA-Board run is identified by its project, commit, batch, input and configurations. A wandb run becomes one so that
-the next commit's run of the same training is compared with it:
+the next commit's run of the same training is compared with it, and so that two runs of a script don't replace each
+other's files:
 - `project` and `group` make the batch, "project/group", where the web app lists the run. QA-Board's project is the
   repository, from qaboard.yaml: wandb's `entity` isn't used.
-- `name`, when you give one, is the run's input; else the script's name, like `start_run()`'s default. wandb's random
-  names are not used. `config` is the run's configuration. The name and the configuration identify the run: a run
-  of the same name and configuration on the next commit is compared with this one, and running it again on the same
-  commit is a new attempt of it. Stable names compare across commits; a name with a date or a job id makes each run
-  new, with nothing to compare with.
+- The input is the run's `name` when you give one, else the script's name and the `job_type`, "train/eval". wandb's
+  random names are not used. Ranks of a distributed training other than 0 add "rank-N" (WORLD_SIZE, RANK).
+- The configuration is `config`'s plain data: objects, like argparse's `func`, are only recorded as parameters, as
+  are the keys in `init(qaboard={"params": [...]})`.
+- So stable names, groups and configurations compare across commits. Those with a date, a time, a job id or a
+  generated id make each run new, with nothing to compare with: they are warned about. The run's identity is printed
+  when it starts. Running the same run again on the same commit is a new attempt of it, which replaces its files:
+  within a process, that is warned about too.
 - The run starts in QA-Board at the first call that needs it (`log()`, `summary`, files, `run.dir`, `run.url`,
   `finish()`), with the configuration and name set until then: `wandb.config.update(args)` right after `init()` is
   part of the run's identity. What the configuration gets after that is recorded as parameters (`log_params()`).
   A run that logs nothing and isn't finished explicitly is not created.
 - The name, `id`, `job_type`, `tags` and `notes` you give are recorded as the parameters `wandb.*`.
 - `init(qaboard={...})` passes arguments to `start_run()`, and they win: `qaboard={"input": "train/coco-mini"}`.
+- A process forked from the run's (a data loader's, a pool's worker) doesn't log to it, start it or finish it: it
+  warns once. `wandb.init()` there starts a run of its own.
 
 How the calls map:
 - `log(data, step=, commit=)` -> `run.log()`, with wandb's steps: without `step` each call is a step, `commit=False`
-  adds to the step until a call commits it, a step that goes back is skipped with a warning, and a key logged twice
-  in a step keeps its last value. Numbers make series. `Image`s, and media made from a file, are saved as
-  media/<key>/<step>.<extension>; other media, texts and lists are skipped with a warning.
+  adds to the step until a call commits it, a step that goes back is skipped (warned once, counted at the end), and
+  a key logged twice in a step keeps its last value. Numbers make series. `Image`s (also of matplotlib figures, or
+  figures logged as they are) and media made from a file are saved as media/<key>/<step>.<extension>, lists of them
+  as media/<key>/<index>/<step>.<extension>; other media, texts and lists are skipped with a warning.
 - `config` -> the configuration, then `log_params()`. `summary[key] = value` -> `log_metrics()`; reading `summary`
   gives the run's metrics, where each series' last value is one, like wandb's summary.
 - `define_metric(name, summary=, goal=)` -> `run.set_summary()` and which way is better (`qaboard.define_metric()`).
@@ -48,7 +57,9 @@ How the calls map:
 - `run.qaboard` is the `ActiveRun`, for what only QA-Board does.
 """
 import atexit
+import inspect
 import io
+import json
 import math
 import os
 import random
@@ -63,23 +74,29 @@ from glob import glob
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Set, Tuple, Union
 
-from ..active_run import MAX_NAME_LENGTH, RESERVED_METRICS, SUMMARIES, ActiveRun, start_run
+from ..active_run import MAX_NAME_LENGTH, RESERVED_METRICS, SUMMARIES, ActiveRun, _default_input, _jsonable, start_run
 from ..series import as_number, flatten
 
 __all__ = [
   'init', 'log', 'finish', 'define_metric', 'save', 'log_artifact', 'log_model', 'use_artifact', 'watch', 'unwatch',
-  'alert', 'login', 'mark_preempting', 'log_code', 'run', 'config', 'summary', 'Run', 'Config', 'Summary', 'Artifact',
-  'Image', 'Video', 'Audio', 'Html', 'Table', 'Histogram', 'Object3D', 'Molecule', 'Plotly', 'Settings', 'AlertLevel',
-  'Error',
+  'alert', 'login', 'mark_preempting', 'log_code', 'setup', 'teardown', 'run', 'config', 'summary', 'util', 'Run',
+  'Config', 'Summary', 'Artifact', 'Image', 'Video', 'Audio', 'Html', 'Table', 'Histogram', 'Object3D', 'Molecule',
+  'Plotly', 'Settings', 'AlertLevel', 'Error',
 ]
+# Not wandb's: scripts that compare versions take their oldest code path
+__version__ = '0.0.0+qaboard'
 
-# init()'s arguments that mean nothing in QA-Board, and change nothing you'd see: ignored without a warning
-QUIET_ARGUMENTS = ('entity', 'dir', 'allow_val_change', 'force', 'anonymous', 'save_code', 'settings', 'magic')
 ONLINE_MODES = (None, '', 'online', 'run', 'shared')
 OFFLINE_MODES = ('offline', 'dryrun')
 RESUME_VALUES = (True, 'allow', 'must', 'auto')
 TRUE_VALUES = ('1', 'true', 'yes', 'on')
 PATTERN = re.compile(r'[*?\[]')   # in define_metric()'s names
+# What changes at every run: dates, times, long numbers like job ids, objects' addresses
+VOLATILE = re.compile(r'(19|20)\d\d[-_./]?[01]\d[-_./]?[0-3]\d|\b[0-2]?\d[:h][0-5]\d|\d{6,}| at 0x[0-9a-f]+')
+JOB_IDS = ('SLURM_JOB_ID', 'LSB_JOBID', 'PBS_JOBID', 'JOB_ID', 'CI_JOB_ID', 'GITHUB_RUN_ID')
+# What QA-Board, Python or numpy ask objects, which the stubs below must not pretend to have
+PROTOCOL = frozenset(('tolist', 'item', 'numpy', 'detach', 'cpu', 'shape', 'ndim', 'dtype', 'save', 'savefig', 'mode',
+                      'read', 'keys', 'items', 'values', 'flag_values_dict', 'to_dict', 'to_json', 'as_posix'))
 
 _lock = threading.RLock()
 _warned: Set[str] = set()
@@ -104,17 +121,27 @@ class Error(Exception):
 
 
 class _Unsupported:
-  """A wandb feature QA-Board doesn't have: calling it, or anything it gives, does nothing and returns it"""
+  """
+  A wandb feature QA-Board doesn't have: calling it, or anything it gives, does nothing and returns it. What would
+  give files (`download()`, `get_path()`, a path) raises an Error that says so, rather than giving a path to nothing.
+  """
+  FILES = ('download', 'get_path', 'file', 'get_entry', 'checkout')
+
   def __init__(self, name: str):
     self._name = name
 
   def __call__(self, *args: Any, **kwargs: Any) -> '_Unsupported':
+    if self._name.rsplit('.', 1)[-1] in self.FILES:
+      raise Error(f"{self._name}() isn't supported by QA-Board: there are no files to give. Read them from where they are.")
     return self
 
   def __getattr__(self, name: str) -> '_Unsupported':
-    if name.startswith('__'):
+    if name.startswith('_') or name in PROTOCOL:
       raise AttributeError(name)
     return _Unsupported(f"{self._name}.{name}")
+
+  def __fspath__(self) -> str:
+    raise Error(f"{self._name} isn't supported by QA-Board: it is no file or folder")
 
   def __bool__(self) -> bool:
     return False
@@ -146,6 +173,25 @@ class AlertLevel:
   INFO = 'INFO'
   WARN = 'WARN'
   ERROR = 'ERROR'
+
+
+class _Util:
+  """`wandb.util`: `generate_id()`, the rest warns once and does nothing"""
+  generated: Set[str] = set()  # random: names made with them change at every run
+
+  @classmethod
+  def generate_id(cls, length: int = 8) -> str:
+    generated = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+    cls.generated.add(generated)
+    return generated
+
+  def __getattr__(self, name: str) -> Any:
+    if name.startswith('_'):
+      raise AttributeError(name)
+    return _unsupported(f"wandb.util.{name}")
+
+
+util = _Util()
 
 
 def _unsupported(name: str, why: str = '') -> _Unsupported:
@@ -198,12 +244,55 @@ def _as_step(step: Any) -> Optional[int]:
   return None
 
 
-def _input_of(name: Optional[str]) -> Optional[str]:
-  """A run's name as an input of QA-Board: a relative path, without '..'"""
-  if not name:
-    return None
-  parts = [p for p in str(name).replace('\\', '/').split('/') if p.strip() and p not in ('.', '..')]
-  return '/'.join(parts) or None
+def _input_of(name: Optional[str], job_type: Optional[str]) -> str:
+  """
+  The run's input in QA-Board: its name, as a relative path without '..', else the script's name and the job type,
+  "train/eval". Ranks of a distributed training other than 0 add "rank-N": else they would be the same run.
+  """
+  parts = [p for p in str(name or '').replace('\\', '/').split('/') if p.strip() and p not in ('.', '..')]
+  if not parts:
+    parts = [_default_input(), *([str(job_type).replace('/', '-')] if job_type else [])]
+  rank = _rank()
+  if rank:
+    parts.append(f"rank-{rank}")
+  return '/'.join(parts)
+
+
+def _rank() -> int:
+  """This process' rank in a distributed training (torchrun, Lightning, Accelerate, DeepSpeed, MPI...), else 0"""
+  try:
+    if int(os.environ.get('WORLD_SIZE') or os.environ.get('OMPI_COMM_WORLD_SIZE') or 1) <= 1:
+      return 0
+    return int(os.environ.get('RANK') or os.environ.get('OMPI_COMM_WORLD_RANK') or os.environ.get('LOCAL_RANK') or 0)
+  except ValueError:
+    return 0
+
+
+def _volatile(value: Any) -> bool:
+  """Whether a value looks like it changes at every run: a date, a time, a job id..."""
+  if not isinstance(value, (str, int, os.PathLike)) or isinstance(value, bool):
+    return False
+  job_ids = [j for j in (os.environ.get(v) for v in JOB_IDS) if j and len(j) >= 3]
+  if isinstance(value, int):  # a number of steps is no date
+    return str(value) in job_ids
+  text = str(value)
+  return bool(VOLATILE.search(text)) or any(j in text for j in job_ids) or any(g in text for g in _Util.generated)
+
+
+def _identifies(value: Any) -> bool:
+  """
+  Whether a configuration's value can identify a run: plain data. Objects (functions, devices, modules) would only
+  be saved as their text, often with their address in memory, different at every run.
+  """
+  if value is None or isinstance(value, (bool, int, float, Path)):
+    return True
+  if isinstance(value, str):
+    return ' at 0x' not in value
+  if isinstance(value, (list, tuple)):
+    return all(_identifies(v) for v in value)
+  if isinstance(value, Mapping):
+    return all(isinstance(k, str) and _identifies(v) for k, v in value.items())
+  return type(value).__module__ == 'numpy' and hasattr(value, 'item') and getattr(value, 'ndim', 1) == 0
 
 
 # --- configuration and summary ----------------------------------------------------------------------------------------
@@ -388,7 +477,7 @@ class _Media:
     return None
 
   def __getattr__(self, name: str) -> Any:
-    if name.startswith('_'):
+    if name.startswith('_') or name in PROTOCOL:
       raise AttributeError(name)
     return _Unsupported(f"wandb.{type(self).__name__}.{name}")
 
@@ -414,12 +503,16 @@ def _image_array(data: Any) -> Any:
 
 
 class Image(_Media):
-  """`wandb.Image(path | PIL image | array | tensor, caption=...)`, saved as a file of the run when logged"""
+  """`wandb.Image(path | PIL image | matplotlib figure | array | tensor, caption=...)`, saved as a file of the run when logged"""
   def _source(self) -> Optional[Source]:
     found = super()._source()
     if found is not None:
       return found
     data = self._data
+    if hasattr(data, 'savefig'):  # a matplotlib figure
+      buffer = io.BytesIO()
+      data.savefig(buffer, format='png')
+      return buffer.getvalue(), '.png'
     if hasattr(data, 'save') and hasattr(data, 'mode'):  # a PIL image
       buffer = io.BytesIO()
       data.save(buffer, format='PNG')
@@ -571,8 +664,12 @@ class Run:
     self._goals: Dict[str, bool] = {}     # define_metric(goal=): smaller is better, for names and patterns
     self._defined: Set[str] = set()       # series given their goal
     self._saved: List[Tuple[str, Optional[str]]] = []  # save(): copied again at the end
+    self._copied: Dict[Path, Tuple[int, int]] = {}      # save(): the files copied, when they were as (mtime, size)
+    self._steps_back = 0                  # log() calls skipped because their step went back
     self._disabled_summary: Dict[str, Any] = {}
     self._disabled_dir: Optional[str] = None
+    self._pid = os.getpid()               # forked workers don't log to their parent's run
+    self._broken = False                  # start_run() failed: the training goes on, without QA-Board
 
   # --- what the run is ---------------------------------------------------------------------------------------------
   @property
@@ -673,7 +770,8 @@ class Run:
         step = _as_step(step)
       if step is not None:
         if step < self._step:
-          _warn_once('step-back', f"WARNING: wandb.log(step={step}) after step {self._step}: steps only go up, these values are not logged (like wandb).")
+          self._steps_back += 1
+          _warn_once('step-back', f"WARNING: wandb.log(step={step}) after step {self._step}: steps only go up, these values are not logged (like wandb). How many calls were skipped is said at the end.")
           return
         if step > self._step:
           self._commit()
@@ -705,6 +803,8 @@ class Run:
         self._goals[name] = goal == 'minimize'
         if not PATTERN.search(name):
           self._define(name, goal == 'minimize')
+      elif name in self._goals:  # given by an earlier define_metric()
+        goal = 'minimize' if self._goals[name] else 'maximize'
       if summary is not None:
         how = self._summary_of(name, str(summary), goal)
         if how is not None:
@@ -748,9 +848,10 @@ class Run:
     with self._lock:
       if self._started() is None:
         return []
-      saved = self._copy_files(str(glob_str), None if base_path is None else str(base_path))
-      if policy != 'now':
-        self._saved.append((str(glob_str), None if base_path is None else str(base_path)))
+      pattern = (str(glob_str), None if base_path is None else str(base_path))
+      saved = self._copy_files(*pattern)
+      if policy != 'now' and pattern not in self._saved:
+        self._saved.append(pattern)
       return saved
 
   def log_artifact(self, artifact_or_path: Union[Artifact, str, Path], name: Optional[str] = None, type: Optional[str] = None,
@@ -801,6 +902,8 @@ class Run:
   # --- lifecycle ---------------------------------------------------------------------------------------------------
   def finish(self, exit_code: Optional[int] = None, quiet: Optional[bool] = None) -> None:
     """Ends the run: as failed with an exit code other than 0"""
+    if self._forked('finish'):
+      return
     with self._lock:
       if self._finished:
         return
@@ -820,6 +923,8 @@ class Run:
     return self
 
   def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+    if self._forked('finish'):
+      return
     with self._lock:
       if not self._finished:
         self._finished = True
@@ -846,28 +951,74 @@ class Run:
   def _config_values(self) -> Dict[str, Any]:
     return dict(object.__getattribute__(self.config, '_values'))
 
+  def _forked(self, call: str) -> bool:
+    """Whether we are in a process forked from the run's (a data loader's worker, a pool's): it isn't its run"""
+    if os.getpid() == self._pid:
+      return False
+    _warn_once(f"fork:{os.getpid()}", f"WARNING: wandb.{call}() in a process forked from the run's: ignored. Log from the process that called wandb.init(), or call wandb.init() in the worker for a run of its own.")
+    return True
+
   def _started(self) -> Optional[ActiveRun]:
-    """The QA-Board run, started the first time it is needed, with the configuration and name set until then"""
-    if self.disabled:
+    """
+    The QA-Board run, started the first time it is needed, with the configuration and name set until then. None when
+    disabled, in a forked process, or when it could not start: the training goes on.
+    """
+    if self.disabled or self._broken or self._forked('log'):
       return None
     with self._lock:
       if self._active is None:
-        configuration = self._config_values()
-        options: Dict[str, Any] = {**self._options, 'input': _input_of(self._name), 'configs': [configuration] if configuration else None}
-        if self._summaries:
-          options['summary'] = dict(self._summaries)
-        options.update(self._overrides)
-        self._active = start_run(**options)
+        options, reported = self._start_options()
+        _same_identity(options)
+        try:
+          self._active = start_run(**options)
+        except Exception as e:  # init() checked the setup: what is left is said, and the training goes on
+          self._broken = True
+          _say(f"WARNING: could not start the run in QA-Board: {e}")
+          _say("         The training goes on without it: wandb calls do nothing for this run.")
+          return None
         if self._options.get('resume'):
           self._step = max(self._step, self._active.last_step + 1)
-        recorded = dict(self._recorded)
-        if 'configs' in self._overrides and configuration:
-          # its own configurations were given to start_run(): wandb's is what the run reports
-          self._active.log_params(configuration)
-        if recorded:
-          self._active.log_params({'wandb': recorded})
+        if reported:
+          self._active.log_params(reported)
+        if self._recorded:
+          self._active.log_params({'wandb': dict(self._recorded)})
+        configs = json.dumps(_jsonable(list(self._active.configs)), sort_keys=True)
+        configs = f"the configurations {configs[:300]}{'...' if len(configs) > 300 else ''}" if self._active.configs else 'no configuration'
+        _say(f"the wandb run is the input {self._active.input!r} with {configs}, in the batch {self._active.batch!r}: the same on the next commit is compared with it.")
         _watch_exit(self)
       return self._active
+
+  def _start_options(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """start_run()'s arguments, and the configuration's values that are only reported, as parameters"""
+    configuration = self._config_values()
+    overrides = dict(self._overrides)
+    excluded = set(overrides.pop('params', None) or ())
+    identity: Dict[str, Any] = {}
+    reported: Dict[str, Any] = {}
+    for key, value in configuration.items():
+      if key in excluded:
+        reported[key] = value
+      elif not _identifies(value):
+        _warn_once(f"object:{key}", f"wandb.config[{key!r}] is a {type(value).__name__}, not plain data: recorded as a parameter, not in the run's identity.")
+        reported[key] = value
+      else:
+        identity[key] = value
+        for name, item in flatten({key: value}).items():
+          if _volatile(item):
+            _warn_once(f"volatile:{name}", f"WARNING: wandb.config[{name!r}] = {str(item)[:80]!r} looks like it changes at every run (a date, a time, a job id): as part of the run's identity, the next commit's run won't be compared with this one. To record it as a parameter instead: wandb.init(qaboard={{'params': [{key!r}]}}).")
+    if self._name and (_volatile(self._name) or self.id in self._name):
+      _warn_once('volatile:name', f"WARNING: wandb.init(name={self._name!r}) looks like it changes at every run (a date, a job id, the run's id): it is the run's input in QA-Board, so the next commit's run won't be compared with this one. Give a stable name, or none.")
+    for what, value in (('project', self.project), ('group', self.group)):
+      if value and _volatile(value):
+        _warn_once(f"volatile:{what}", f"WARNING: wandb.init({what}={value!r}) looks like it changes at every run: it names the batch, so runs won't be compared from commit to commit. Use a stable {what}.")
+    options: Dict[str, Any] = {**self._options, 'input': _input_of(self._name, self.job_type), 'configs': [identity] if identity else None}
+    if self._summaries:
+      options['summary'] = dict(self._summaries)
+    if 'configs' in overrides:
+      # start_run() gets its own configurations: wandb's is what the run reports
+      reported = configuration
+    options.update(overrides)
+    return options, reported
 
   def _record(self, values: Dict[str, Any]) -> None:
     """The wandb.* parameters"""
@@ -930,6 +1081,8 @@ class Run:
       if not key or key.startswith('_') or key in RESERVED_METRICS or len(key) > MAX_NAME_LENGTH:
         _warn_once(f"key:{key[:40]}", f"WARNING: wandb.log(): QA-Board doesn't take {key[:40]!r} as a series' name (1 to {MAX_NAME_LENGTH} characters, not starting with '_', not {' or '.join(RESERVED_METRICS)}): skipped.")
         continue
+      if hasattr(value, 'savefig'):  # a matplotlib figure, or pyplot itself
+        value = Image(value)
       if isinstance(value, _Media) or (isinstance(value, (list, tuple)) and value and all(isinstance(v, _Media) for v in value)):
         self._log_media(active, key, value, step)
         continue
@@ -964,14 +1117,14 @@ class Run:
         self._skip(key, item)
         continue
       content, extension = source
-      suffix = f"_{index}" if len(items) > 1 else ''
-      self._keep(active, f"media/{key}/{step}{suffix}{extension}", content)
+      folder = f"media/{key}/{index}" if len(items) > 1 else f"media/{key}"
+      self._keep(active, f"{folder}/{step}{extension}", content)
 
   def _keep(self, active: ActiveRun, name: str, source: Union[Path, bytes]) -> None:
     try:
       active.log_artifact(name, source)
     except Exception as e:  # logging never ends a training
-      _warn_once(f"file:{name}", f"WARNING: could not save {name} with the run: {e}")
+      _warn_once(f"file:{type(e).__name__}", f"WARNING: could not save {name} with the run: {e}")
 
   def _copy_files(self, pattern: str, base_path: Optional[str]) -> List[str]:
     active = self._active
@@ -991,7 +1144,10 @@ class Run:
         name = path.relative_to(base).as_posix()
       except ValueError:
         name = path.name
-      self._keep(active, name, path)
+      stat = path.stat()
+      if self._copied.get(path) != (stat.st_mtime_ns, stat.st_size):  # else copied already, unchanged since
+        self._keep(active, name, path)
+        self._copied[path] = (stat.st_mtime_ns, stat.st_size)
       saved.append(str(path))
     return saved
 
@@ -1001,6 +1157,9 @@ class Run:
       self._commit()
       for pattern, base_path in self._saved:
         self._copy_files(pattern, base_path)
+      if self._steps_back:
+        _say(f"WARNING: {self._steps_back} wandb.log() calls with a step lower than the previous were not logged.")
+        self._steps_back = 0
 
 
 # --- the module's state, like wandb's: wandb.run, wandb.config, wandb.summary -------------------------------------------
@@ -1039,11 +1198,39 @@ def _watch_exit(started: Run) -> None:
       atexit.register(_at_exit)
 
 
+_identities: Set[str] = set()   # of the runs started in this process
+
+
+def _same_identity(options: Mapping[str, Any]) -> None:
+  """Warns when a run starts with the same identity as one before in this process: it replaces its files"""
+  if options.get('resume'):
+    return
+  key = json.dumps(_jsonable({k: options.get(k) for k in ('project', 'commit', 'batch', 'input', 'configs', 'share', 'output_dir')}), sort_keys=True)
+  with _lock:
+    seen = key in _identities
+    _identities.add(key)
+  if seen:
+    _say(f"WARNING: this run has the same batch, input ({options.get('input')!r}) and configuration as a run started before by this process: it is a new attempt of that run, and replaces its files. Give each run its own name= or job_type=.")
+
+
+def _check_setup(overrides: Mapping[str, Any]) -> None:
+  """What start_run() would refuse about the project or the commit, said by init() rather than by the first log()"""
+  from ..active_run import _Setup
+  try:
+    _Setup(overrides.get('project'), overrides.get('commit'))
+  except ValueError as e:
+    message = str(e)
+    if 'needs to know the project' in message:
+      message = ("QA-Board doesn't know your project (your repository): run the script from a folder with a qaboard.yaml "
+                 "(see `qa init`), or pass wandb.init(qaboard={'project': 'group/repo'}). wandb's project= names the run's batch.")
+    raise Error(f"wandb.init(): {message}") from None
+
+
 def _at_exit() -> None:
   with _lock:
     runs = list(_unfinished)
   for unfinished in runs:
-    if unfinished._active is not None and not unfinished._finished:
+    if unfinished._active is not None and not unfinished._finished and unfinished._pid == os.getpid():
       try:
         unfinished._flush(unfinished._active)
       except Exception as e:
@@ -1073,12 +1260,15 @@ def init(entity: Optional[str] = None, project: Optional[str] = None, dir: Optio
   Starts a run, like `wandb.init()`, and returns it; also `wandb.run`, `wandb.config` and `wandb.summary`.
   - `project` and `group` make the run's batch, "project/group". QA-Board's project is the repository.
   - `name` is the run's input, `config` its configuration: they identify it, and compare it with the next commit's.
-    Without a name, the input is the script's name. Use stable names: a date or a job id makes every run new.
+    Without a name, the input is the script's name, and the `job_type`. Use stable names: a date or a job id makes
+    every run new.
   - The run starts in QA-Board at the first call that needs it, with the configuration set until then.
   - `mode="disabled"` logs nothing; `mode="offline"` keeps the run in the project's output/ folder.
   - `resume="allow"`, "must" or True continue the previous run of the same name and configuration.
-  - `qaboard={...}`: arguments of `qaboard.start_run()`, which win: `qaboard={"input": "train/coco-mini"}`.
-  Other arguments are ignored, with a warning for those that would change what you see.
+  - `qaboard={...}`: arguments of `qaboard.start_run()`, which win: `qaboard={"input": "train/coco-mini"}`; and
+    `"params": ["seed", ...]`, configuration keys recorded as parameters only, not part of the run's identity.
+  Other arguments are ignored, with a warning for those that would change what you see. Raises `Error` when QA-Board
+  can't make the run: outside a project, give `qaboard={"project": "group/repo"}`.
   """
   _ignore_arguments('wandb.init', kwargs)
   for argument, value in (('resume_from', resume_from), ('fork_from', fork_from), ('tensorboard', tensorboard),
@@ -1087,6 +1277,13 @@ def init(entity: Optional[str] = None, project: Optional[str] = None, dir: Optio
       _warn_once(f"argument:wandb.init:{argument}", f"WARNING: wandb.init({argument}=...) isn't supported by QA-Board: ignored.")
   if qaboard is not None and not isinstance(qaboard, Mapping):
     raise TypeError(f"wandb.init(qaboard=...) takes start_run()'s arguments as a dict, like {{'input': 'train/coco-mini'}}, not {qaboard!r}")
+  overrides = dict(qaboard or {})
+  allowed = set(inspect.signature(start_run).parameters) | {'params'}
+  unknown = sorted(set(overrides) - allowed)
+  if unknown:
+    raise TypeError(f"wandb.init(qaboard=...): {', '.join(unknown)}: expected arguments of qaboard.start_run(), or params: {', '.join(sorted(allowed))}")
+  if not isinstance(overrides.get('params') or [], (list, tuple, set)):
+    raise TypeError("wandb.init(qaboard={'params': [...]}) lists the configuration's keys that are only parameters, not part of the run's identity")
 
   # what wandb reads from the environment
   project = project or _env('WANDB_PROJECT')
@@ -1097,13 +1294,17 @@ def init(entity: Optional[str] = None, project: Optional[str] = None, dir: Optio
   job_type = job_type or _env('WANDB_JOB_TYPE')
   if tags is None and _env('WANDB_TAGS'):
     tags = [t.strip() for t in (_env('WANDB_TAGS') or '').split(',') if t.strip()]
-  mode = mode or _env('WANDB_MODE')
+  if mode is None and _env('WANDB_MODE'):
+    mode = _env('WANDB_MODE')
+    if mode in OFFLINE_MODES + ('disabled',):
+      _warn_once('env-mode', f"WANDB_MODE={mode}: {'nothing is logged' if mode == 'disabled' else 'runs stay in the output/ folder, and the server is not told'}.")
   if (_env('WANDB_DISABLED') or '').lower() in TRUE_VALUES:
+    _warn_once('env-disabled', "WANDB_DISABLED: nothing is logged.")
     mode = 'disabled'
   if resume is None and _env('WANDB_RESUME'):
     resume = _env('WANDB_RESUME')
   id_given = bool(id or _env('WANDB_RUN_ID'))
-  run_id = str(id or _env('WANDB_RUN_ID') or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8)))
+  run_id = str(id or _env('WANDB_RUN_ID') or util.generate_id())
 
   if mode not in ONLINE_MODES + OFFLINE_MODES + ('disabled',):
     _warn_once(f"mode:{mode}", f"WARNING: wandb.init(mode={mode!r}): expected online, offline or disabled: online.")
@@ -1114,7 +1315,8 @@ def init(entity: Optional[str] = None, project: Optional[str] = None, dir: Optio
   # a run is active: what wandb's reinit says
   with _lock:
     previous = run
-  if previous is not None and not previous._finished:
+  # a run of the process we were forked from isn't ours: neither returned, nor finished
+  if previous is not None and not previous._finished and previous._pid == os.getpid():
     if reinit in (True, 'finish_previous') or (reinit in (None, 'default') and 'ipykernel' in sys.modules):
       previous.finish()
     elif reinit != 'create_new':
@@ -1133,10 +1335,12 @@ def init(entity: Optional[str] = None, project: Optional[str] = None, dir: Optio
   options: Dict[str, Any] = {'batch': batch, 'resume': resume in RESUME_VALUES}
   if mode in OFFLINE_MODES:
     options['share'] = False
+  if mode != 'disabled':
+    _check_setup(overrides)
   started = Run(
     project=project, entity=entity, group=group, name=name, notes=notes, tags=list(tags) if tags else None,
     job_type=job_type, config=values, id=run_id, id_given=id_given, resume=resume in RESUME_VALUES,
-    offline=mode in OFFLINE_MODES, disabled=mode == 'disabled', options=options, overrides=dict(qaboard or {}),
+    offline=mode in OFFLINE_MODES, disabled=mode == 'disabled', options=options, overrides=overrides,
   )
   _set_current(started)
   return started

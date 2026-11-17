@@ -207,34 +207,43 @@ wandb.finish()
 ```
 
 It is a thin layer on `start_run()`, experimental like it, to see whether what QA-Board does is enough for you. What
-it doesn't support warns once and does nothing: a training never stops for it.
+it doesn't support warns once and does nothing: a training doesn't stop for it. `wandb.init()` raises an error when
+QA-Board can't make the run, before the training starts: outside a project (a folder with a *qaboard.yaml*), pass
+`qaboard={"project": "group/repo"}`.
 
 **How your runs are identified.** QA-Board compares each run with the same run on the reference commit, so a run
-must be the same from one commit to the next:
+must be the same from one commit to the next. When it starts, the run prints what identifies it:
 - `project` and `group` make the batch, here `detector/lr-sweep`. QA-Board's project is your repository, from
   *qaboard.yaml*: `entity` isn't used.
-- `name` is the run's input, and `config` its configuration. Without a name, the input is the script's name, as with
-  `start_run()`. A run with the same name and configuration on the same commit is a [new attempt](#attempts).
-- **Give stable names, or none.** A name with a date, a job id or `wandb.run.id` makes every run new, with nothing
-  to compare with.
-- The run starts in QA-Board at your first `wandb.log()` (or `summary`, a file, `wandb.run.dir`), with the
-  configuration set until then: `wandb.config.update(args)` right after `init()` counts. What you add to the
-  configuration later is recorded as [parameters](#params).
+- `name` is the run's input. Without a name, the input is the script's name, and the `job_type` if you give one:
+  `train/eval`. In a distributed training, ranks other than 0 add `rank-N`.
+- `config` is the run's configuration, without the values that aren't plain data (functions, devices...), which are
+  recorded as [parameters](#params). List other keys to record as parameters only with
+  `wandb.init(config=args, qaboard={"params": ["seed", "output_dir"]})`.
+- **Keep them stable.** A name, a group or a configuration value with a date, a job id or a generated id makes
+  every run new, with nothing to compare with: QA-Board warns about those it recognizes.
+- A run with the same identity on the same commit is a [new attempt](#attempts), which replaces the previous one's
+  files: give runs of a script that do different things their own `name` or `job_type`.
+- The run starts in QA-Board at your first `wandb.log()` (or `summary`, a file, `wandb.run.dir`, `wandb.run.url`),
+  with the configuration set until then: `wandb.config.update(args)` right after `init()` counts. What you add to
+  the configuration later is recorded as parameters.
 - `init(qaboard={...})` passes [arguments of `start_run()`](#lifecycle), and they win:
   `wandb.init(project="detector", qaboard={"input": "train/coco-mini"})`. `wandb.run.qaboard` is the run
   `start_run()` returned.
+- Data loader workers and other processes forked from the run's don't log to it, with a warning. To give each
+  worker its own run, call `wandb.init()` in it.
 
 <details>
 <summary>What each wandb call does in QA-Board</summary>
 
 | wandb | In QA-Board |
 |---|---|
-| `wandb.log({...}, step=, commit=)` | [Series](#series), with wandb's steps: each call is a step, `commit=False` adds to the next one. Texts, tables, histograms and plots are skipped |
-| `wandb.Image(...)`, media made from a file | Saved as *media/&lt;key&gt;/&lt;step&gt;.png*, or with the file's extension. Show them on the run's card with a [visualization](/docs/visualizations#dynamic-visualizations), `path: "media/examples/:step.png"`. Images from arrays need Pillow |
+| `wandb.log({...}, step=, commit=)` | [Series](#series), with wandb's steps: each call is a step, `commit=False` adds to the next one. Steps that go back are skipped, and counted at the end. Texts, tables, histograms and plots are skipped |
+| `wandb.Image(...)`, media made from a file, matplotlib figures | Saved as *media/&lt;key&gt;/&lt;step&gt;.png*, or with the file's extension; a list of images as *media/&lt;key&gt;/&lt;index&gt;/&lt;step&gt;.png*. Show them on the run's card with a [visualization](/docs/visualizations#dynamic-visualizations), `path: "media/examples/:step.png"`. Images from arrays need Pillow |
 | `wandb.config` | The configuration, then parameters |
 | `wandb.summary["mAP"] = 0.41` | A [metric](#metrics) of the run. Each series' last value is one too |
 | `wandb.define_metric("val/loss", summary="min", goal="minimize")` | The series' summary, also with `run.qaboard.set_summary()`, and which way is better. `step_metric` is ignored: series are plotted by step and by time |
-| `wandb.save()`, files in `wandb.run.dir` | [Files](#artifacts) of the run |
+| `wandb.save()`, files in `wandb.run.dir` | [Files](#artifacts) of the run. Saved again at the end if they changed |
 | `wandb.log_artifact()`, `wandb.log_model()`, `wandb.Artifact` | Files of the run, under *artifacts/&lt;name&gt;/*. No versions, aliases or references |
 | `wandb.finish(exit_code=1)`, an exception in `with wandb.init():` | The run fails |
 | `mode="offline"`, `mode="disabled"` | `share=False`: the run stays in *output/*. Disabled: nothing is logged |
@@ -242,7 +251,8 @@ must be the same from one commit to the next:
 | `WANDB_PROJECT`, `WANDB_RUN_GROUP`, `WANDB_NAME`, `WANDB_MODE`... | Read like wandb does |
 | `wandb.login()` | Nothing: sign in with `qa auth login` |
 | `wandb.alert()` | Printed in the run's log |
-| `wandb.watch()`, `use_artifact()`, sweeps, `wandb.Api` | Not supported: a warning, once |
+| `wandb.util.generate_id()` | An id, like wandb's |
+| `wandb.watch()`, `use_artifact()`, sweeps, `wandb.Api` | Not supported: a warning, once. `use_artifact().download()` raises an error: read the files from where they are |
 
 </details>
 

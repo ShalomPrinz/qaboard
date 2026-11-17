@@ -52,14 +52,14 @@ class TestTraining(WandbTestCase):
     self.assertEqual(result.returncode, 0, result.stderr)
     started, *_, finished = server.outputs()
     configuration = {'model': 'resnet50', 'lr': 0.001, 'batch_size': 32}
-    run_dir = self.run_dir('@alice| detector/lr-sweep', [configuration], 'train_wandb')
+    run_dir = self.run_dir('@alice| detector/lr-sweep', [configuration], 'train_wandb/train')
 
     # what start_run(input="train_wandb", configs=[...], batch="detector/lr-sweep") sends
     for body in (started, finished):
       self.assertEqual(body['project'], 'kitefin/detector')  # the repository's, not wandb's project
       self.assertEqual(body['commit_sha'], self.commit)
       self.assertEqual(body['batch_label'], '@alice| detector/lr-sweep')
-      self.assertEqual(body['input_path'], 'train_wandb')  # no name: the script's
+      self.assertEqual(body['input_path'], 'train_wandb/train')  # no name: the script's, and the job type
       self.assertEqual(body['configurations'], [configuration])
       self.assertEqual(body['output_directory'], str(run_dir))
     self.assertEqual(finished['data']['params'], {'epochs': 3, 'wandb': {'job_type': 'train', 'tags': ['baseline']}})
@@ -216,7 +216,7 @@ wandb.finish()
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertEqual(server.requests, [])
     # like a local `qa run`: in the project's output/, in the batch as named
-    run_dir = self.run_dir('detector/lr-sweep', [{'model': 'resnet50', 'lr': 0.001, 'batch_size': 32}], 'train_wandb', root=self.project)
+    run_dir = self.run_dir('detector/lr-sweep', [{'model': 'resnet50', 'lr': 0.001, 'batch_size': 32}], 'train_wandb/train', root=self.project)
     self.assertEqual(json.loads((run_dir / 'metrics.json').read_text())['val/loss'], 0.2)
     self.assertFalse(any(self.storage.iterdir()))
 
@@ -325,8 +325,8 @@ wandb.finish()
       'media/examples/0.png': b'png',
       'media/pil/0.png': b'from-pil',
       'media/html/0.html': b'<p>hi</p>',
-      'media/grid/1_0.png': b'png',
-      'media/grid/1_1.png': b'png',
+      'media/grid/0/1.png': b'png',
+      'media/grid/1/1.png': b'png',
     })
     self.assertEqual(files['written-in-place.txt'], b'ok')
     self.assertEqual(result.stderr.count("wandb.Image('missing.png'): no such file"), 1)
@@ -340,9 +340,13 @@ wandb.finish()
 class TestUnsupported(WandbTestCase):
   def test_unsupported_calls_warn_once_and_dont_raise(self):
     result = self.script(QA_OFFLINE='1', code="""
+import os
 from qaboard.integrations import wandb
 
 assert wandb.login(key="x") is True
+group_id = wandb.util.generate_id()  # wandb's docs, for groups of runs
+assert isinstance(group_id, str) and len(group_id) == 8, group_id
+assert wandb.__version__
 run = wandb.init(project="detector", entity="team", sync_tensorboard=True, not_a_wandb_argument=1, settings=wandb.Settings(start_method="thread"))
 for _ in range(2):
   wandb.watch(object(), log="all", log_freq=10)
@@ -351,7 +355,14 @@ for _ in range(2):
   table = wandb.Table(columns=["a", "b"])
   table.add_data(1, 2)
   wandb.log({"table": table, "hist": wandb.Histogram([1, 2, 3]), "curve": wandb.plot.line(table, "a", "b"), "values": [1, 2]})
-  assert not wandb.use_artifact("dataset:latest").download()
+  artifact = wandb.use_artifact("dataset:latest")
+  for call in (artifact.download, lambda: artifact.get_path("x"), lambda: os.path.join(artifact, "train.csv")):
+    try:
+      call()
+    except wandb.Error as e:  # rather than a path to nothing
+      assert "isn't supported by QA-Board" in str(e), e
+    else:
+      raise AssertionError(call)
   for r in wandb.Api().runs("team/detector"):
     raise AssertionError("no runs")
   run.log_code(".")
@@ -387,6 +398,161 @@ from qaboard.integrations import wandb
 assert wandb.__name__ == "qaboard.integrations.wandb"
 """)
     self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class TestWhatCouldGoWrong(WandbTestCase):
+  """Found by a review: none ends a training, or loses another run's files"""
+  def test_init_says_what_is_missing(self):
+    elsewhere = Path(self.tmp.name).resolve() / 'notebooks'
+    elsewhere.mkdir()
+    result = self.python(cwd=elsewhere, QA_OFFLINE='1', code="""
+from qaboard.integrations import wandb
+try:
+  wandb.init(project="detector")
+except wandb.Error as e:
+  print(e)
+else:
+  raise AssertionError("init() without a project")
+""")
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertIn("qaboard={'project': 'group/repo'}", result.stdout)
+    self.assertIn("wandb's project= names the run's batch", result.stdout)
+
+    result = self.script(QA_OFFLINE='1', code="""
+from qaboard.integrations import wandb
+try:
+  wandb.init(qaboard={"inputs": "train"})
+except TypeError as e:
+  assert "inputs: expected arguments of qaboard.start_run()" in str(e), e
+else:
+  raise AssertionError("qaboard={...} with a typo")
+
+# what start_run() refuses after init(): said once, and the training goes on
+run = wandb.init(qaboard={"input": "../outside"})
+for step in range(3):
+  wandb.log({"loss": step})
+wandb.summary["mAP"] = 0.4
+assert run.qaboard is None and run.dir
+wandb.finish()
+""")
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertEqual(result.stderr.count('could not start the run in QA-Board'), 1)
+
+  def test_forked_workers_dont_use_their_parents_run(self):
+    result = self.script(QA_OFFLINE='1', code="""
+import json, os
+from pathlib import Path
+from qaboard.integrations import wandb
+
+run = wandb.init(project="detector", name="parent")
+pid = os.fork()
+if pid == 0:  # a data loader's worker, before the parent logged: it doesn't start a run of its own
+  wandb.log({"worker": 1})
+  wandb.finish()
+  os._exit(0 if run._active is None else 1)
+assert os.waitpid(pid, 0)[1] == 0
+wandb.log({"loss": 1})
+
+pid = os.fork()
+if pid == 0:  # a pool's worker, with a run of its own: the parent's isn't returned, nor finished
+  with wandb.init(project="detector", name="child", reinit=True) as child:
+    assert child is not run
+    wandb.log({"acc": 1})
+  os._exit(0)
+assert os.waitpid(pid, 0)[1] == 0
+assert run.qaboard.state == "running" and not (Path(run.dir) / "metrics.json").exists()
+wandb.log({"loss": 0.5})
+wandb.finish()
+assert json.loads((Path(run.qaboard.output_dir) / "metrics.json").read_text())["loss"] == 0.5
+""")
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertIn('in a process forked from the run', result.stderr)
+    self.assertTrue((self.run_dir('detector', [], 'child', root=self.project) / 'metrics.json').exists())
+
+  def test_runs_of_a_script_dont_replace_each_other(self):
+    result = self.script(QA_OFFLINE='1', code="""
+from pathlib import Path
+from qaboard.integrations import wandb
+
+with wandb.init(project="detector", job_type="train", config={"model": "resnet50"}) as run:
+  wandb.log({"train/loss": 0.1})
+  (Path(run.dir) / "model.pt").write_text("weights")
+  train = run.qaboard
+with wandb.init(project="detector", job_type="eval", config={"model": "resnet50"}) as run:
+  wandb.log({"val/acc": 0.9})
+  evaluation = run.qaboard
+assert (train.input, evaluation.input) == ("train_wandb/train", "train_wandb/eval")
+assert (train.output_dir / "model.pt").exists()
+
+# the same run again: a new attempt, which replaces its files. Said.
+with wandb.init(project="detector", job_type="eval", config={"model": "resnet50"}) as run:
+  wandb.log({"val/acc": 0.8})
+""")
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertEqual(result.stderr.count('it is a new attempt of that run, and replaces its files'), 1)
+
+    # ranks of a distributed training: rank 0 is the run, the others their own
+    code = "from qaboard.integrations import wandb\nrun = wandb.init(project='detector', group='ddp')\nprint(run.qaboard.input)\nwandb.finish()"
+    inputs = [self.script(code, QA_OFFLINE='1', WORLD_SIZE='2', RANK=str(rank)).stdout.strip() for rank in (0, 1)]
+    self.assertEqual(inputs, ['train_wandb', 'train_wandb/rank-1'])
+
+  def test_what_identifies_a_run_is_plain_and_stable(self):
+    result = self.script(QA_OFFLINE='1', code="""
+import argparse
+from qaboard.integrations import wandb
+
+def train(args):
+  pass
+args = argparse.Namespace(lr=0.1, func=train, seed=3, out_dir="/runs/2026-11-17_12-03", table=wandb.Table())
+run = wandb.init(project="detector", config=args, qaboard={"params": ["seed"]})
+wandb.log({"loss": 1})
+assert run.qaboard.configs == ({"lr": 0.1, "out_dir": "/runs/2026-11-17_12-03"},), run.qaboard.configs
+params = run.qaboard.params
+assert params["seed"] == 3 and "<function train at 0x" in params["func"] and "Table" in params["table"], params
+wandb.finish()
+""")
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertIn("wandb.config['func'] is a function, not plain data", result.stderr)
+    self.assertEqual(result.stderr.count("wandb.config['out_dir'] = '/runs/2026-11-17_12-03' looks like it changes at every run"), 1)
+    self.assertIn("the wandb run is the input 'train_wandb' with the configurations", result.stderr)
+
+    result = self.script("from qaboard.integrations import wandb\nrun = wandb.init(name='resnet', group=f'exp-{wandb.util.generate_id()}')\nrun.name = run.name + '-' + run.id\nwandb.log({'loss': 1})", QA_OFFLINE='1')
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertIn("looks like it changes at every run (a date, a job id, the run's id)", result.stderr)
+    self.assertIn("wandb.init(group='exp-", result.stderr)
+
+  def test_details(self):
+    (self.project / 'model.pt').write_bytes(b'one')
+    result = self.script(QA_OFFLINE='1', WANDB_MODE='offline', code="""
+import os
+from pathlib import Path
+from qaboard.integrations import wandb
+
+class Figure:  # what matplotlib's figures have
+  def savefig(self, f, format):
+    f.write(b"figure")
+
+run = wandb.init(project="detector")
+for epoch in range(3):  # saved once per change, not once per call
+  wandb.save("model.pt")
+assert len(run._saved) == 1 and len(run._copied) == 1
+Path("model.pt").write_bytes(b"two")
+os.utime("model.pt", (0, 0))
+wandb.define_metric("val/loss", goal="minimize")
+wandb.define_metric("val/loss", summary="best")
+for value in (2, 1, 3):
+  wandb.log({"val/loss": value, "figure": Figure(), "image": wandb.Image(Figure())})
+wandb.log({"val/loss": 0}, step=1)
+wandb.log({"val/loss": 0}, step=0)
+assert wandb.summary["val/loss"] == 1
+directory = Path(run.dir)
+wandb.finish()
+assert (directory / "model.pt").read_bytes() == b"two"
+assert (directory / "media/figure/2.png").read_bytes() == b"figure" and (directory / "media/image/0.png").exists()
+""")
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertIn('WANDB_MODE=offline: runs stay in the output/ folder', result.stderr)
+    self.assertIn('2 wandb.log() calls with a step lower than the previous were not logged', result.stderr)
 
 
 if __name__ == '__main__':

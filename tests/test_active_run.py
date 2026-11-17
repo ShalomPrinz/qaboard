@@ -500,6 +500,8 @@ run.set_summary("val/loss", "min")          # also for what was logged before
 run.set_summary("val/*", "max")
 run.set_summary("*", "mean")
 assert dict(run.metrics) == {"val/loss": 1.0, "val/top1": 3.0, "train/loss": 2.0}, run.metrics
+run.set_summary("val/top*", "min")          # newer patterns win over older ones, not over names
+assert dict(run.metrics) == {"val/loss": 1.0, "val/top1": 1.0, "train/loss": 2.0}, run.metrics
 assert run.last_step == 2
 raises(ValueError, run.set_summary, "val/loss", "median")
 raises(TypeError, run.set_summary, "", "min")
@@ -610,9 +612,11 @@ run.log({"loss": 1.0})
 pid = os.fork()
 if pid == 0:
   assert run.log({"loss": 0.0}) == -1
+  run.finish()  # the parent's run: not ended by its worker
   os._exit(0)
 assert os.waitpid(pid, 0)[1] == 0
 assert [p.value for p in run.series("loss")] == [1.0]
+assert run.state == "running" and not (run.output_dir / "metrics.json").exists()
 run.finish()
 """)
     self.assertEqual(result.returncode, 0, result.stderr)

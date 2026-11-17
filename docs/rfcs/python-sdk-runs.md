@@ -241,9 +241,12 @@ tracker are in `docs/rfcs/python-sdk-runs-follow-ups.md`.
 - ~~**`qaboard.compat.wandb`**~~: shipped later as `qaboard.integrations.wandb` (`qaboard/integrations/wandb.py`,
   tests in `tests/test_wandb_shim.py`, docs in "Coming from Weights & Biases" on the user docs' page), the package
   where framework integrations go. A thin mapping onto `start_run()`: `project/group` is the batch, the run's name
-  its input (else the script's), `config` its configurations, and the run starts at the first call that needs it so
-  that `wandb.config.update(args)` after `init()` is part of its identity. It added `ActiveRun.set_summary()` for
-  `define_metric(summary=)`. Unsupported calls warn once and do nothing.
+  its input (else the script's and the job type, plus `rank-N` for ranks other than 0), `config`'s plain data its
+  configuration, and the run starts at the first call that needs it so that `wandb.config.update(args)` after
+  `init()` is part of its identity. Volatile names and values (dates, job ids, generated ids) are warned about,
+  `init()` checks the project, forked workers don't touch their parent's run (`ActiveRun._finish()` checks the
+  process too). It added `ActiveRun.set_summary()` for `define_metric(summary=)`. Unsupported calls warn once and
+  do nothing.
 - **`qa sync` for series and runs logged offline**: a run whose every message failed stays on disk. Its folder has
   what a later `sync` needs (`run.json` has the project, commit and batch).
 - **System metrics, alerts, sweeps, a registry**, as planned.
