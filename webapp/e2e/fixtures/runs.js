@@ -86,7 +86,7 @@ export const make_runs = (now = Date.now()) => {
   });
   [0, 500].forEach((warmup, index) => add({
     experiment: 'detector/lr-sweep/warmup', user: 'bob', commit: 'c2', configs: { lr: 1e-3, seed: 0, batch_size: 64, warmup },
-    started: 3 - index * 0.4, hours: 2.2, series: training({ lr: 1e-3, warmup, quality: warmup ? 0.015 : 0 }),
+    started: 3 - index * 0.4, hours: 2.2, series: training({ lr: 1e-3, warmup, seed: 5 + index, quality: warmup ? 0.015 : 0 }),
   }));
   ['resnet50', 'convnext-t', 'efficientnet-b3'].forEach((backbone, index) => add({
     experiment: 'detector/backbone', user: 'alice', commit: 'c0', configs: { backbone, lr: 1e-3, batch_size: 64 },

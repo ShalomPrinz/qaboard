@@ -197,6 +197,8 @@ const RunsPage = () => {
   const metrics = metric_columns(loaded, { chosen: state.metrics, main_metrics: metrics_config.main_metrics ?? [], params: varying });
   const looked_at = selected.length > 0 ? runs.filter(run => selected.includes(run.id)) : runs.filter(run => !state.hidden.has(run.id));
   const best = best_values(looked_at, metrics, available_metrics);
+  // only the runs looked at are in bold, not others with the same value
+  const contenders = new Set(looked_at.map(run => run.id));
 
   const [options, setOptions, preview] = useSeriesOptions(state.series, ({ series }) => updateRuns({ series: { ...state.series, ...series } }));
   const [q, onQ] = useUrlText(state.q, value => updateRuns({ q: value }));
@@ -383,6 +385,7 @@ const RunsPage = () => {
             metrics={metrics}
             params={params}
             best={best}
+            contenders={contenders}
             available_metrics={available_metrics}
             node={path_parts(experiment).length > 0 && node && node.children.length === 0 ? null : experiment}
             project={project}

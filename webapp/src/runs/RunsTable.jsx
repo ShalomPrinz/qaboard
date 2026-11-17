@@ -82,7 +82,7 @@ const Duration = ({ run }) => {
   </>;
 };
 
-const Row = ({ run, project, label, node, style, plotted, hidden, selected, open, best, metrics, params, available_metrics, onOpen, onToggleHidden, onToggleSelected, onHover, onUser }) => {
+const Row = ({ run, project, label, node, style, plotted, hidden, selected, open, best, contenders, metrics, params, available_metrics, onOpen, onToggleHidden, onToggleSelected, onHover, onUser }) => {
   const run_param_values = run_params(run);
   const experiment = relative_experiment(run.batch?.experiment, node);
   const when = started(run);
@@ -124,7 +124,7 @@ const Row = ({ run, project, label, node, style, plotted, hidden, selected, open
     <td><div className="qa-name" title={label}>{label}</div></td>
     {node !== null && <td><div className="qa-experiment" title={run.batch?.label}>{experiment || <span className={Classes.TEXT_MUTED}>—</span>}</div></td>}
     {metrics.map(metric => <td key={metric} className="qa-number">
-      <MetricValue value={run.metrics?.[metric]} info={metric_info(available_metrics, metric)} best={best[metric] !== undefined && run.metrics?.[metric] === best[metric]}/>
+      <MetricValue value={run.metrics?.[metric]} info={metric_info(available_metrics, metric)} best={contenders.has(run.id) && best[metric] !== undefined && run.metrics?.[metric] === best[metric]}/>
     </td>)}
     {params.map(param => <td key={param} style={{ whiteSpace: 'nowrap' }}>
       {param in run_param_values ? value_text(run_param_values[param]) : <span className={Classes.TEXT_MUTED}>—</span>}
