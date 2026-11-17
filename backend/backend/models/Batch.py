@@ -81,6 +81,9 @@ class Batch(Base):
     Index('ix_batches_user_id_latest_output_datetime', 'user_id', 'latest_output_datetime'),
     Index('ix_batches_user_name_latest_output_datetime', 'user_name', 'latest_output_datetime'),
     Index('ix_batches_latest_output_datetime', 'latest_output_datetime'),
+    # The batches with runs started from code: projects with some get the Runs page (backend/runs_list.py).
+    # Created by the migration c4e6a8b0d2f3.
+    Index('ix_batches_sdk', 'ci_commit_id', postgresql_where=text("data ? 'sdk'")),
   )
 
   batch_dir_override = Column(String())

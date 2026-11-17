@@ -423,6 +423,10 @@ def new_output_webhook():
   if not batch.data:
     batch.data = {}
   batch.data.update({"type": data['job_type']})
+  # Runs started from code (qaboard.start_run()): the project gets the Runs page (backend/runs_list.py)
+  if isinstance(data.get('data'), dict) and data['data'].get('sdk'):
+    batch.data['sdk'] = True
+  flag_modified(batch, "data")
 
   platform = data['platform']
   # for backward-compat with old clients
