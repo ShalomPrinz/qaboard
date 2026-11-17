@@ -18,8 +18,8 @@
 <link rel="alternate" type="application/rss+xml" href="/qaboard/release-notes/rss.xml" title="QA-Board release notes RSS Feed">
 <link rel="alternate" type="application/atom+xml" href="/qaboard/release-notes/atom.xml" title="QA-Board release notes Atom Feed">
 <link rel="alternate" type="application/json" href="/qaboard/release-notes/feed.json" title="QA-Board release notes JSON Feed"><link rel="stylesheet" href="/qaboard/assets/css/styles.96dbde19.css">
-<script src="/qaboard/assets/js/runtime~main.1aef6c59.js" defer="defer"></script>
-<script src="/qaboard/assets/js/main.a676050e.js" defer="defer"></script>
+<script src="/qaboard/assets/js/runtime~main.2d8e7d21.js" defer="defer"></script>
+<script src="/qaboard/assets/js/main.0bd41459.js" defer="defer"></script>
 </head>
 <body>
 <svg style="display: none;"><defs>
@@ -64,6 +64,7 @@ once. Save it in your CI&#x27;s secrets as <code>QABOARD_TOKEN</code> (see <a cl
 <p>With GitHub Actions or GitLab CI, you don&#x27;t even need a token: in <strong>Tokens</strong>, click <strong>Trust CI jobs</strong> and choose
 the repository (and optionally the branch) whose jobs may act as the service account (see
 <a class="" href="/qaboard/docs/ci-integration#ci-without-secrets">Upload from CI without a secret</a>).</p>
+<figure class="figure_SMyr"><div class="placeholder_h76v" style="aspect-ratio:16 / 10" role="img" aria-label="Screenshot not captured yet: The Tokens dialog of the detector&#x27;s CI bot, kitefin/detector/ci[bot]. It has no stored token, yet trusts the GitHub Actions jobs of kitefin/detector on main, with the permission to add to the workflow."><div class="placeholderBody_daQp" aria-hidden="true"><span class="placeholderLabel_eDiU">Screenshot not captured yet</span><p class="placeholderShows_Lq6i">The Tokens dialog of the detector&#x27;s CI bot, kitefin/detector/ci[bot]. It has no stored token, yet trusts the GitHub Actions jobs of kitefin/detector on main, with the permission to add to the workflow.</p><span class="placeholderIds_FT2E"><code>access/ci-trust</code></span></div></div></figure>
 <p>Runs it sends show <code>group/repo/ci[bot]</code>. Its tokens only work on the project and the projects under it, whatever
 roles it&#x27;s given elsewhere. Change its role in the list, revoke its tokens from <strong>Tokens</strong>, or delete it: its tokens
 stop working at once.</p>

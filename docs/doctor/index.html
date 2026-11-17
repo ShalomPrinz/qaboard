@@ -18,8 +18,8 @@
 <link rel="alternate" type="application/rss+xml" href="/qaboard/release-notes/rss.xml" title="QA-Board release notes RSS Feed">
 <link rel="alternate" type="application/atom+xml" href="/qaboard/release-notes/atom.xml" title="QA-Board release notes Atom Feed">
 <link rel="alternate" type="application/json" href="/qaboard/release-notes/feed.json" title="QA-Board release notes JSON Feed"><link rel="stylesheet" href="/qaboard/assets/css/styles.96dbde19.css">
-<script src="/qaboard/assets/js/runtime~main.1aef6c59.js" defer="defer"></script>
-<script src="/qaboard/assets/js/main.a676050e.js" defer="defer"></script>
+<script src="/qaboard/assets/js/runtime~main.2d8e7d21.js" defer="defer"></script>
+<script src="/qaboard/assets/js/main.0bd41459.js" defer="defer"></script>
 </head>
 <body>
 <svg style="display: none;"><defs>
@@ -34,6 +34,7 @@ a runner, and whenever a batch doesn&#x27;t start.</p>
 <p>Each check prints ✔ (ok), <code>!</code> (warning), ✘ (error) or <code>-</code> (skipped), with what it found. Every failed check is
 followed by its fix: a command to run, a snippet for <em>qaboard.yaml</em>, or what to ask your admins. <code>qa doctor</code> exits
 with code <code>1</code> when a check failed, and <code>0</code> otherwise, so a CI job or a script can run it first.</p>
+<figure class="figure_SMyr"><div class="placeholder_h76v" style="aspect-ratio:16 / 10" role="img" aria-label="Terminal recording not recorded yet: `qa doctor` in the camera ISP&#x27;s folder: every check passes (qa and qaboard.yaml, the server, the results storage, the local runner); then `qa doctor --runner lsf` fails, bsub not on the PATH, with how to fix it."><div class="placeholderBody_daQp" aria-hidden="true"><span class="placeholderLabel_eDiU">Terminal recording not recorded yet</span><p class="placeholderShows_Lq6i">`qa doctor` in the camera ISP&#x27;s folder: every check passes (qa and qaboard.yaml, the server, the results storage, the local runner); then `qa doctor --runner lsf` fails, bsub not on the PATH, with how to fix it.</p><span class="placeholderIds_FT2E"><code>cli/doctor</code></span></div></div></figure>
 <p>Here is the end of the output for a project that sends its runs to a test Kubernetes cluster: the claim of its
 storage is missing in the namespace, and the pods won&#x27;t see the project&#x27;s folder. The other problem, above, is the
 server.</p>

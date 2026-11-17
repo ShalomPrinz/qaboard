@@ -18,8 +18,8 @@
 <link rel="alternate" type="application/rss+xml" href="/qaboard/release-notes/rss.xml" title="QA-Board release notes RSS Feed">
 <link rel="alternate" type="application/atom+xml" href="/qaboard/release-notes/atom.xml" title="QA-Board release notes Atom Feed">
 <link rel="alternate" type="application/json" href="/qaboard/release-notes/feed.json" title="QA-Board release notes JSON Feed"><link rel="stylesheet" href="/qaboard/assets/css/styles.96dbde19.css">
-<script src="/qaboard/assets/js/runtime~main.1aef6c59.js" defer="defer"></script>
-<script src="/qaboard/assets/js/main.a676050e.js" defer="defer"></script>
+<script src="/qaboard/assets/js/runtime~main.2d8e7d21.js" defer="defer"></script>
+<script src="/qaboard/assets/js/main.0bd41459.js" defer="defer"></script>
 </head>
 <body>
 <svg style="display: none;"><defs>
@@ -62,6 +62,7 @@ browsers are signed out. If you forgot it, ask your admins: they give you a new 
 commands you ran: your admins see these numbers too), then your recent sign-ins, the tokens you created or revoked,
 and the CLI logins you approved. If you see something you didn&#x27;t do, revoke your tokens and tell your admins.</li>
 </ul>
+<figure class="figure_SMyr"><div class="placeholder_h76v" style="aspect-ratio:16 / 10" role="img" aria-label="Screenshot not captured yet: Settings → Preferences, under the other Settings tabs. The theme, Comfortable or Compact lists of commits and run cards, the values written on the pixels and the runs&#x27; settings, all saved in the account."><div class="placeholderBody_daQp" aria-hidden="true"><span class="placeholderLabel_eDiU">Screenshot not captured yet</span><p class="placeholderShows_Lq6i">Settings → Preferences, under the other Settings tabs. The theme, Comfortable or Compact lists of commits and run cards, the values written on the pixels and the runs&#x27; settings, all saved in the account.</p><span class="placeholderIds_FT2E"><code>account/preferences</code></span></div></div></figure>
 <h2 class="anchor anchorTargetHideOnScrollNavbar_vjPI" id="access-tokens">Access tokens<a href="#access-tokens" class="hash-link" aria-label="Direct link to Access tokens" title="Direct link to Access tokens" translate="no">​</a></h2>
 <p>Scripts and CI jobs use tokens to act as you. Create one in <strong>Settings → Access tokens</strong>:</p>
 <ul>
@@ -79,6 +80,7 @@ may have leaked: it stops working at once.</p>
 <h2 class="anchor anchorTargetHideOnScrollNavbar_vjPI" id="signing-in-from-the-qa-cli">Signing in from the qa CLI<a href="#signing-in-from-the-qa-cli" class="hash-link" aria-label="Direct link to Signing in from the qa CLI" title="Direct link to Signing in from the qa CLI" translate="no">​</a></h2>
 <p>Run <code>qa auth login</code>, open the link it prints in any browser (it also works when <code>qa</code> runs on a server you reach over
 SSH), check that the code is the one in your terminal, and approve. See <a class="" href="/qaboard/docs/installation#signing-in">Signing in</a>.</p>
+<figure class="figure_SMyr"><div class="placeholder_h76v" style="aspect-ratio:16 / 10" role="img" aria-label="Screenshot not captured yet: The Device sign-in page for a pending qa auth login from gpu-03, started like the CLI does. The code to compare with the terminal, the computer and address it came from, its scopes, and the warning above Approve and Deny."><div class="placeholderBody_daQp" aria-hidden="true"><span class="placeholderLabel_eDiU">Screenshot not captured yet</span><p class="placeholderShows_Lq6i">The Device sign-in page for a pending qa auth login from gpu-03, started like the CLI does. The code to compare with the terminal, the computer and address it came from, its scopes, and the warning above Approve and Deny.</p><span class="placeholderIds_FT2E"><code>account/cli-sign-in</code></span></div></div></figure>
 <h2 class="anchor anchorTargetHideOnScrollNavbar_vjPI" id="verified-runs">Verified runs<a href="#verified-runs" class="hash-link" aria-label="Direct link to Verified runs" title="Direct link to Verified runs" translate="no">​</a></h2>
 <p>Runs sent with a token show who really sent them: hover a run&#x27;s name on its card, and its <strong>Run Info</strong> reads &quot;Sent by
 ines with token nightly CI&quot;. The batch logs show a check mark next to the user of each <code>qa batch</code>. Runs sent without

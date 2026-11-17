@@ -18,8 +18,8 @@
 <link rel="alternate" type="application/rss+xml" href="/qaboard/release-notes/rss.xml" title="QA-Board release notes RSS Feed">
 <link rel="alternate" type="application/atom+xml" href="/qaboard/release-notes/atom.xml" title="QA-Board release notes Atom Feed">
 <link rel="alternate" type="application/json" href="/qaboard/release-notes/feed.json" title="QA-Board release notes JSON Feed"><link rel="stylesheet" href="/qaboard/assets/css/styles.96dbde19.css">
-<script src="/qaboard/assets/js/runtime~main.1aef6c59.js" defer="defer"></script>
-<script src="/qaboard/assets/js/main.a676050e.js" defer="defer"></script>
+<script src="/qaboard/assets/js/runtime~main.2d8e7d21.js" defer="defer"></script>
+<script src="/qaboard/assets/js/main.0bd41459.js" defer="defer"></script>
 </head>
 <body>
 <svg style="display: none;"><defs>
@@ -87,6 +87,7 @@ a signed-in user (e.g. start tuning or redo runs from scripts):</p>
 usual, check the code and approve. <code>qa</code> saves a token for this server in <em>~/.config/qaboard/hosts.yaml</em>, readable
 only by you (<em>%APPDATA%\qaboard</em> on Windows). It serves all your checkouts and worktrees: it&#x27;s never saved in your
 projects.</p>
+<figure class="figure_SMyr"><div class="placeholder_h76v" style="aspect-ratio:16 / 10" role="img" aria-label="Screenshot not captured yet: The Device sign-in page for a pending qa auth login from gpu-03, started like the CLI does. The code to compare with the terminal, the computer and address it came from, its scopes, and the warning above Approve and Deny."><div class="placeholderBody_daQp" aria-hidden="true"><span class="placeholderLabel_eDiU">Screenshot not captured yet</span><p class="placeholderShows_Lq6i">The Device sign-in page for a pending qa auth login from gpu-03, started like the CLI does. The code to compare with the terminal, the computer and address it came from, its scopes, and the warning above Approve and Deny.</p><span class="placeholderIds_FT2E"><code>account/cli-sign-in</code></span></div></div></figure>
 <div class="language-bash codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-bash codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">qa auth status   </span><span class="token comment" style="color:#999988;font-style:italic"># which server, which user, which token</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">qa auth </span><span class="token builtin class-name">logout</span><span class="token plain">   </span><span class="token comment" style="color:#999988;font-style:italic"># signs out: revokes the token qa auth login created, and forgets it</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">qa auth token    </span><span class="token comment" style="color:#999988;font-style:italic"># prints the token, e.g. for curl</span><br></div></code></pre></div></div>
 <p>The token expires after 180 days without use (admins can change it): run <code>qa auth login</code> again. You can see and
 revoke it in the web app, in <strong>Settings → CLI sign-ins</strong>.</p>

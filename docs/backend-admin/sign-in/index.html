@@ -18,8 +18,8 @@
 <link rel="alternate" type="application/rss+xml" href="/qaboard/release-notes/rss.xml" title="QA-Board release notes RSS Feed">
 <link rel="alternate" type="application/atom+xml" href="/qaboard/release-notes/atom.xml" title="QA-Board release notes Atom Feed">
 <link rel="alternate" type="application/json" href="/qaboard/release-notes/feed.json" title="QA-Board release notes JSON Feed"><link rel="stylesheet" href="/qaboard/assets/css/styles.96dbde19.css">
-<script src="/qaboard/assets/js/runtime~main.1aef6c59.js" defer="defer"></script>
-<script src="/qaboard/assets/js/main.a676050e.js" defer="defer"></script>
+<script src="/qaboard/assets/js/runtime~main.2d8e7d21.js" defer="defer"></script>
+<script src="/qaboard/assets/js/main.0bd41459.js" defer="defer"></script>
 </head>
 <body>
 <svg style="display: none;"><defs>
@@ -64,12 +64,14 @@ redirect URI, <code>$QABOARD_URL/api/v1/auth/oidc/&lt;id&gt;/callback</code>, sh
 <li class="">stored encrypted in the database, with the server&#x27;s encryption key: <code>QABOARD_ENCRYPTION_KEY</code>, or a key the server
 generates. Back it up: without it, the stored secrets can&#x27;t be read (see <a class="" href="/qaboard/docs/backend-admin/settings#secrets-and-the-encryption-key">the encryption key</a>).</li>
 </ul>
+<figure class="figure_SMyr"><div class="placeholder_h76v" style="aspect-ratio:16 / 10" role="img" aria-label="Screenshot not captured yet: The Add an OIDC provider dialog filled in for the demo world&#x27;s Keycloak (Kitefin SSO, https://sso.kitefin.example/realms/kitefin), not saved. The client secret stored encrypted (or read from an environment variable) and how existing accounts are matched."><div class="placeholderBody_daQp" aria-hidden="true"><span class="placeholderLabel_eDiU">Screenshot not captured yet</span><p class="placeholderShows_Lq6i">The Add an OIDC provider dialog filled in for the demo world&#x27;s Keycloak (Kitefin SSO, https://sso.kitefin.example/realms/kitefin), not saved. The client secret stored encrypted (or read from an environment variable) and how existing accounts are matched.</p><span class="placeholderIds_FT2E"><code>admin/oidc-provider</code></span></div></div></figure>
 <p>Providers from the environment are read-only in the panel. Users link more sign-in methods to their account in
 <strong>Settings → Sign-in methods</strong>.</p>
 <p><strong>Reorder sign-in methods</strong> with <strong>Move up</strong> and <strong>Move down</strong> on their cards in <strong>Admin → Sign-in</strong>, those from the
 environment too: the sign-in page lists them in that order (<code>auth.provider_order</code>, or <code>QABOARD_SIGN_IN_ORDER=sso,ldap,local</code>
 in the environment). Until you do, <em>Recommended</em> providers come first. The first single sign-on is the main button
 when it&#x27;s <em>Recommended</em>.</p>
+<figure class="figure_SMyr"><div class="placeholder_h76v" style="aspect-ratio:16 / 10" role="img" aria-label="Screenshot not captured yet: Admin → Sign-in with Kitefin SSO saved, Recommended, above the QA-Board account from the environment. The redirect URI to register with the provider, and the move up/down buttons that order the sign-in page."><div class="placeholderBody_daQp" aria-hidden="true"><span class="placeholderLabel_eDiU">Screenshot not captured yet</span><p class="placeholderShows_Lq6i">Admin → Sign-in with Kitefin SSO saved, Recommended, above the QA-Board account from the environment. The redirect URI to register with the provider, and the move up/down buttons that order the sign-in page.</p><span class="placeholderIds_FT2E"><code>admin/sign-in-methods</code></span></div></div></figure>
 <h3 class="anchor anchorTargetHideOnScrollNavbar_vjPI" id="existing-accounts">Existing accounts<a href="#existing-accounts" class="hash-link" aria-label="Direct link to Existing accounts" title="Direct link to Existing accounts" translate="no">​</a></h3>
 <p>At their first SSO sign-in, users are recognized by the provider&#x27;s id for them (<code>sub</code>). For users who already have an
 account, the provider&#x27;s <code>match_users</code> decides:</p>
