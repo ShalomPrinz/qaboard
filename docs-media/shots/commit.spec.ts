@@ -1931,3 +1931,34 @@ shot('commit/run-name-menu', {
   ],
   padding: 16,
 });
+
+
+// Reference runs (webapp/src/matching/): the camera ISP runs every input on linux and on the hardware model
+// (hw-model), and some at low light too. The facade's linux run compares with the reference's linux run, but two others
+// could do: the picker, opened from the run's menu, lists them with what differs. With "All runs like this", hovering
+// the hardware model's run says the rule a click adds for every run
+const pickerDialog = (page: Page) => page.getByRole('dialog', { name: /^Compare .* with another reference run$/ });
+shot('commit/reference-picker', {
+  project: IQ,
+  url: d => d.commitUrl(IQ, 'merge-bilateral', { reference: 'isp-4-1', view: 'output-list', filter: 'photos/facade base linux' }),
+  alt: 'The reference picker of the facade photo\'s run, set to All runs like this: under Same input, the linux run in '
+    + 'use, the hardware model\'s run, hovered, and the low-light run, with their PSNR. The hint: prefer reference runs '
+    + 'with platform = hw-model.',
+  caption: 'Pick another reference run from the run\'s menu: the list says how each one differs. For all runs, the pick '
+    + 'becomes a rule, here comparing every run with the hardware model\'s.',
+  actions: async ui => {
+    const card = cards(ui.page).first();
+    await showCard(ui, 0, 200);
+    await ui.click(card.getByRole('button', { name: 'Run actions' }).first());
+    await ui.click(ui.page.getByRole('menuitem', { name: 'Change reference run…' }));
+    const picker = pickerDialog(ui.page);
+    await picker.waitFor();
+    await ui.click(picker.getByText('All runs like this'));
+    await ui.hover(picker.getByRole('option').filter({ hasText: 'platform = hw-model' }));
+    await picker.getByText('Prefer reference runs with').waitFor();
+    await ui.settle();
+  },
+  // the run's name, where the picker opens, and the picker
+  target: page => [cards(page).first().getByText('photos/facade.png', { exact: true }).first(), pickerDialog(page)],
+  padding: 16,
+});
