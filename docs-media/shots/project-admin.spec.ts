@@ -42,6 +42,9 @@ shot('project-admin/gate', {
     await ui.cursor.moveTo({ x: 1420, y: 1180 });
     await ui.settle();
   },
-  target: page => [page.getByRole('heading', { name: 'Quality gate', exact: true }), page.getByText('Last changed by')],
+  // down to the Save button: "Last changed by" under it has the server's date, the time of the capture
+  target: page => [page.getByRole('heading', { name: 'Quality gate', exact: true }), page.getByRole('button', { name: 'Save', exact: true })],
   padding: 16,
+  // the padding reaches the top of that line
+  mask: page => [page.getByText('Last changed by')],
 });

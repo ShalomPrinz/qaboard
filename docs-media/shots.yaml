@@ -102,7 +102,7 @@ shots:
     kind: tape
     project: serving-latency
     shows: '`qa gate` in CI on the shared-cache commit against its parent: the rules table, p99 4109.7% worse where 10% is allowed, exit code 1; then the sharded cache, p99 52.7% better, exit code 0.'
-    pages: [quality-gate, use-cases/serving-latency, landing]
+    pages: [quality-gate, use-cases/serving-latency, landing, agents]
     needs: cache-shared, cache-sharded vs batch-overflow-fix
     phase: 2
     status: captured
@@ -120,7 +120,7 @@ shots:
     kind: still
     project: serving-latency
     shows: 'The comment `qa gate --post-comment github` posts on the shared cache''s pull request (`qa --dryrun gate`, rendered with github-markdown-css in templates/pr-comment.html, a neutral frame with the pull request''s title and branches): "Quality gate: fail", the link to the Metrics Diff, p99 far over its 10% limit.'
-    pages: [landing, use-cases/serving-latency]
+    pages: [landing, use-cases/serving-latency, quality-gate-pull-requests]
     needs: cache-shared vs batch-overflow-fix
     phase: 3
     status: planned
@@ -346,7 +346,7 @@ shots:
     kind: still
     project: image-quality
     shows: Run cards with their main metrics and changes, the output images new and reference side by side.
-    pages: [running-your-code, user-guide/commit-page, user-guide/first-review, visualizations]
+    pages: [running-your-code, user-guide/commit-page, user-guide/first-review, visualizations, get-started/concepts]
     needs: merge-bilateral vs isp-4-1
     phase: 1
     status: published
@@ -866,7 +866,7 @@ shots:
     kind: still
     project: serving-latency
     shows: 'The Logs view of the tune-batching sweep, started from QA-Board: its `qa batch` command and log, its runs (filtered on one configuration), and the Batch section with the command. (The CI batch''s command and job link show in the CI batch''s Logs view, one batch at a time.)'
-    pages: [user-guide/logs]
+    pages: [user-guide/logs, backend-admin/runners]
     needs: cache-sharded (tune-batching)
     phase: 2
     status: captured
@@ -952,7 +952,7 @@ shots:
     kind: still
     project: detection-eval
     shows: Run Tests / Tuning on int8-percentile, experiment int8-nms on quant-search (2 tests), Choose the values with a grid over score_threshold and nms_iou, 4 combinations, "8 total runs", and the Start 8 runs button.
-    pages: [user-guide/running-from-the-webapp]
+    pages: [user-guide/running-from-the-webapp, user-guide/tuning, backend-admin/runners]
     needs: int8-percentile
     phase: 2
     status: captured
@@ -977,7 +977,7 @@ shots:
     kind: still
     project: detection-eval
     shows: 'The tune-int8 Tuning Analysis: done, 20 of 20 evaluations, the best objective and its metrics against the first evaluation, "What this tells you", the best parameters within the ranges searched with their impact, and the convergence of the objective.'
-    pages: [auto-optimization, use-cases/detection-eval, user-guide/automated-tuning, user-guide/running-from-the-webapp, tutorials/tuning]
+    pages: [auto-optimization, use-cases/detection-eval, user-guide/automated-tuning, user-guide/running-from-the-webapp, tutorials/tuning, user-guide/tuning]
     features: [tuning-analysis]
     needs: int8-percentile (tune-int8)
     phase: 2
