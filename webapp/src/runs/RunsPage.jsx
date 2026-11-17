@@ -242,12 +242,12 @@ const RunsPage = () => {
     </div>
     <div className={Classes.TEXT_MUTED} style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       {experiment
-        ? <>Runs of <strong>{experiment}</strong> and of the experiments under it, whatever their commit: {describe(node_totals)}.</>
+        ? <>Runs of <strong>{experiment}</strong> and of the experiments under it, whatever their commit{node ? <>: {describe(node_totals)}</> : null}.</>
         : <>Every run of the project, whatever its commit, by experiment: what <code>qaboard.start_run(experiment=…)</code> names, slashes making levels.</>}
     </div>
 
     <div className="qa-toolbar">
-      <InputGroup leftIcon="filter" placeholder="Filter: lr=0.001 resnet -failed…" value={q} onChange={onQ} style={{ width: 260 }} aria-label="Filter the runs"
+      <InputGroup leftIcon="filter" placeholder="Filter: lr=0.001 resnet -failed…" value={q} onChange={onQ} style={{ width: 220 }} aria-label="Filter the runs"
         rightElement={q ? <Button variant="minimal" icon="cross" aria-label="Clear the filter" onClick={() => onQ('')}/> : undefined}
         title="Words must all match the run's input, configurations, parameters, experiment, who ran it or its commit. -word excludes, id:123 a run"/>
       {user.is_logged && <SegmentedControl
