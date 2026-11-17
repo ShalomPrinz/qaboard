@@ -254,8 +254,8 @@ const RunsPage = () => {
     if (!has_open_run) return;
     const onKeyDown = event => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
-      // dialogs and popovers on top close first
-      if (document.querySelector('.bp6-overlay-open .bp6-dialog, .bp6-popover-content')) return;
+      // dialogs and menus on top close first (not tooltips: they show on hover)
+      if (document.querySelector('.bp6-overlay-open .bp6-dialog, .bp6-popover:not(.bp6-tooltip) .bp6-popover-content')) return;
       close_ref.current();
     };
     window.addEventListener('keydown', onKeyDown);
