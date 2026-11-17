@@ -107,6 +107,13 @@ shots:
     phase: 2
     status: captured
     experimental: true
+  - id: cli/doctor
+    kind: tape
+    project: image-quality
+    shows: '`qa doctor` in the camera ISP''s folder: every check passes (qa and qaboard.yaml, the server, the results storage, the local runner); then `qa doctor --runner lsf` fails, bsub not on the PATH, with how to fix it.'
+    pages: [doctor]
+    phase: 3
+    status: planned
   - id: ci/step-summary
     kind: still
     project: serving-latency
@@ -225,6 +232,14 @@ shots:
     status: captured
 
   # Commit page: metrics
+  - id: integrations/organized-menu
+    kind: still
+    project: image-quality
+    shows: 'The Integrations menu organized with the "Organize the menu" example of the docs (injected in the API''s answer for the commit, not the camera ISP''s qaboard.yaml): a search box, a link, a red Release checklist labeled docs, a divider titled CI over a Builds submenu open on its GitLab CI and Jenkins jobs, a divider titled Tuning over a webhook.'
+    pages: [triggering-third-party-tools]
+    needs: integrations.spec.ts replaces the commit's integrations with the docs' example, in the page only
+    phase: 3
+    status: planned
   - id: commit/summary
     kind: still
     project: detection-eval
@@ -272,6 +287,13 @@ shots:
     features: [milestones]
     phase: 2
     status: captured
+  - id: commit/reference-picker
+    kind: still
+    project: image-quality
+    shows: 'The reference picker of the facade photo''s linux run (merge-bilateral against isp-4.1), opened from the run''s menu, set to All runs like this: Same input lists the linux run in use, the hw-model run (hovered) and the low-light run with their PSNR; the hint says every run will prefer reference runs with platform = hw-model.'
+    pages: [user-guide/reference-runs]
+    phase: 3
+    status: planned
   - id: commit/reference-tabs
     kind: still
     project: image-quality

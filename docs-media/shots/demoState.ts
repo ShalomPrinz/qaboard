@@ -2,7 +2,7 @@
 // project, access requests. The snapshot has none of them (docs-media/README.md#the-demo-stack-and-its-data), and CI
 // restores it before capturing: what a capture leaves (denied requests, audit events) doesn't last.
 import { request as playwrightRequest, type APIRequestContext, type APIResponse } from '@playwright/test';
-import { DEMO_PASSWORD, type Demo } from './lib/demo';
+import { signIn, type Demo } from './lib/demo';
 
 // The admin of the demo stack (QABOARD_ADMINS in docs-media/compose.demo.yml)
 export const ADMIN = 'adaeze';
@@ -15,7 +15,7 @@ async function json(response: APIResponse, what: string) {
 /** An API client signed in as the persona */
 export async function apiAs(d: Demo, user: string): Promise<APIRequestContext> {
   const api = await playwrightRequest.newContext({ baseURL: d.baseUrl });
-  await json(await api.post('/api/v1/user/auth/', { form: { username: user, password: DEMO_PASSWORD } }), `sign in as ${user}`);
+  await signIn(api, d.baseUrl, user);
   return api;
 }
 
