@@ -73,7 +73,9 @@ async function usersWithoutDates(page: Page) {
 shot('admin/users', {
   project: null,
   login: ADMIN,
-  url: d => `${d.baseUrl}/admin/users`,
+  // the active users only: the service accounts other shots create stay, disabled, when they delete them
+  // (access/ci-trust, admin/service-accounts)
+  url: d => `${d.baseUrl}/admin/users?status=active`,
   alt: 'Admin → Users: the seven people of the demo, from Adaeze to the Kitefin Coding Agent, their email and how '
     + 'they sign in (user name and password), Adaeze tagged Admin (env), and how many active tokens each has.',
   caption: 'Every user, how they sign in and their tokens: click one to disable them, make them an admin, or revoke their tokens.',
@@ -238,6 +240,7 @@ test.describe('groups', () => {
     alt: 'Admin → Groups: fleet-platform (Inference gateway and fleet SDK, 3 members), imaging (Camera ISP, 2 members, '
       + '2 rules) and perception (Detection, odometry and mapping, 2 members, 1 rule).',
     caption: 'One group per team: project owners give it a role on their projects, and its members follow.',
+    viewport: { width: 1100, height: 900 },
     actions: async ui => {
       await ui.page.getByRole('table', { name: 'Groups' }).getByRole('link', { name: 'perception' }).waitFor();
       await ui.cursor.moveTo(away);
@@ -254,6 +257,7 @@ test.describe('groups', () => {
       + 'claim, and users of any sign-in method whose memberOf has CN=imaging,OU=Groups,DC=kitefin,DC=example; then '
       + 'the form to add a rule.',
     caption: 'Rules add users from the groups their sign-in gives, and remove them when they leave those groups.',
+    viewport: { width: 1100, height: 900 },
     actions: async ui => {
       await ui.click(ui.page.getByRole('table', { name: 'Groups' }).getByRole('link', { name: 'imaging' }));
       await ui.page.getByRole('table', { name: 'Rules' }).getByText('Kitefin SSO').waitFor();
@@ -268,7 +272,7 @@ const NIGHTLY = {
   name: 'nightly',
   description: 'Nightly benchmarks of the Kitefin projects, from GitLab CI',
   role: 'developer',
-  ci_trust: [{ provider: 'gitlab', issuer: 'https://git.kitefin.example', repository: 'kitefin/*', ref: 'main' }],
+  ci_trust: [],
 };
 
 // The service accounts' table without its dates (when they were created)
@@ -298,22 +302,6 @@ test.describe('a service account', () => {
       await ui.settle();
     },
     target: serviceAccountsWithoutDates,
-  });
-
-  shot('admin/ci-trust', {
-    project: null,
-    login: ADMIN,
-    url: d => `${d.baseUrl}/admin/service-accounts`,
-    alt: 'The trusted CI jobs of nightly[bot]: GitLab CI jobs of git.kitefin.example, projects kitefin/*, only on main, '
-      + 'never used; then the id_tokens block to add to the .gitlab-ci.yml job that runs qa.',
-    caption: 'CI jobs of these repositories get a short-lived token of the account: no secret to store in the CI.',
-    actions: async ui => {
-      await ui.click(ui.page.getByRole('button', { name: 'Tokens of nightly[bot]' }));
-      await ui.page.getByRole('table', { name: 'Trusted CI jobs' }).waitFor();
-      await ui.cursor.moveTo(away);
-      await ui.settle();
-    },
-    target: page => page.getByRole('region', { name: 'Trusted CI jobs' }),
   });
 });
 
@@ -350,6 +338,7 @@ shot('admin/scheduled-job', {
     await ui.type(dialog.getByLabel('When (cron)', { exact: true }), '59 1 * * 6');
     await dialog.getByText(/^Next: /).waitFor();
     await dialog.getByText(/^\d+ projects?$/).waitFor();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await ui.cursor.moveTo({ x: 1420, y: 1080 });
     await ui.settle();
   },

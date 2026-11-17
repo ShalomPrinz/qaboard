@@ -182,14 +182,6 @@ export async function deleteGroups(admin: APIRequestContext, names: string[]) {
       await json(await admin.delete(`/api/v1/admin/groups/${group.id}`), `delete the group ${group.name}`);
 }
 
-/** The group's id in Admin → Groups */
-export async function groupId(admin: APIRequestContext, name: string): Promise<number> {
-  const { groups } = await json(await admin.get('/api/v1/admin/groups'), 'list the groups');
-  const found = (groups as Array<{ id: number; name: string }>).find(group => group.name === name);
-  if (!found) throw new Error(`[shots] no group ${name}`);
-  return found.id;
-}
-
 interface ServiceAccount { id: number; user_name: string; ci_trust?: unknown[] }
 
 /**
