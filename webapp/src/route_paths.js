@@ -10,6 +10,8 @@ export const route_paths = {
   dashboard: "/:project_id+/dashboard",
   history_branch: "/:project_id+/history/:name+",
   history: "/:project_id+/history",
+  // a project's runs across commits, by experiment: /<project>/runs/<experiment with slashes> (src/runs/)
+  runs: "/:project_id+/runs/:name*",
   // links to milestones: /<project>/milestone/<id>-<label>
   milestone: "/:project_id+/milestone/:name+",
   // the project's Admin pages, next to Access: /<project>/admin/gate (docs/rfcs/project-admin.md)

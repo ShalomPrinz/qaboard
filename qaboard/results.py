@@ -157,8 +157,8 @@ def _runs_page(url: str, server: Optional[str] = None) -> Optional[Dict[str, Any
       return None
     path = stripped
   segments = [s for s in path.split('/') if s]
-  # the first "runs": projects' names come before it, experiments' after (a project named "runs" has no Runs page)
-  index = next((i for i, s in enumerate(segments) if s == 'runs'), None)
+  # like the web app's routes (webapp/src/route_paths.js): the project is everything before the last "runs"
+  index = next((i for i in reversed(range(len(segments))) if segments[i] == 'runs'), None)
   if index is None or index == 0 or 'commit' in segments[:index]:
     return None
   query = parse_qs(parts.query, keep_blank_values=True)
