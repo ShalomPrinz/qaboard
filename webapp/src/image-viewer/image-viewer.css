@@ -2125,6 +2125,11 @@
 .qiv-compact:not(.qiv-chrome-open) .qiv-header > * {
   display: none;
 }
+/* small tiles: the names, without the images' sizes */
+.qiv-compact .qiv-tile .qiv-label-detail,
+.qiv-compact .qiv-label-detail + .qiv-label-detail {
+  display: none;
+}
 .qiv-chrome-toggle {
   position: absolute;
   top: 6px;
