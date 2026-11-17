@@ -3,7 +3,7 @@
 import {
   selection_from_url, url_for_selection, date_range_from_query, route_info,
   show_reference, add_reference, remove_reference, swap_with_top, move_reference, duplicate_reference, rename_reference,
-  toggle_together, set_together_mode,
+  toggle_together, set_together_mode, set_anchor,
   reference_names, reference_colors, side_colors, switch_new_and_reference,
   project_url,
 } from '../selection';
@@ -333,6 +333,25 @@ describe('several references', () => {
       expect(roundtrip(one.url, { together_mode: null }).url).toBe(url);
       // other changes keep it
       expect(act(one.url, show_reference, 1).selected.together_mode).toBe('one');
+    });
+
+    test('the anchor is the new results, or the reference shown: the link says which', () => {
+      expect(select(url).anchor).toBe('new');
+      expect(select(`${url}&anchor=x`).anchor).toBe('new');
+      expect(set_anchor(select(url), 'reference')).toEqual({ anchor: 'reference' });
+      const on_reference = act(url, set_anchor, 'reference');
+      expect(on_reference.url).toBe(`${url}&anchor=reference`);
+      expect(on_reference.selected.anchor).toBe('reference');
+      expect(act(on_reference.url, set_anchor, 'new').url).toBe(url);
+      // another reference, or the bars swapped: the anchor is what it was
+      expect(act(url, show_reference, 1).url).not.toContain('anchor');
+      expect(act(on_reference.url, show_reference, 1).selected).toMatchObject({ anchor: 'reference', ref_commit_id: 'c' });
+      expect(roundtrip(on_reference.url, switch_new_and_reference(select(on_reference.url))).selected.anchor).toBe('reference');
+      expect(act(on_reference.url, add_reference, { commit_id: 'e' }).selected.anchor).toBe('reference');
+      expect(act(on_reference.url, set_together_mode, 'one').selected.anchor).toBe('reference');
+      // a click on a tab: the reference and the anchor at once
+      const clicked = roundtrip(url, { ...show_reference(select(url), 2), ...set_anchor(select(url), 'reference') });
+      expect(clicked.url).toBe('/p/commit/a?reference=d&compare=b&compare=c&ref_index=2&anchor=reference');
     });
 
     test('the primary is always shown', () => {

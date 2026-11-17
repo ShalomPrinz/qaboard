@@ -106,14 +106,14 @@ Give the other images in `more`: each image then shows in a tile, in the order g
 
 One image is the **anchor**, by default the first: the others are compared with it, like an image with its reference.
 It has an anchor icon on its name. Users click another image's name to make it the anchor (`anchor`, `onAnchorChange`:
-its place in the list); an image with `canAnchor: false` can't be. QA-Board controls it: the anchor is the reference
-selected in the page's tabs, and clicking a name selects its tab. The modes become:
+its place in the list); an image with `canAnchor: false` can't be. QA-Board controls it: the anchor is the new image, or the
+reference users click (its tab is then selected too). The modes become:
 
 - **Grid**: every image in its tile, with how far it is from the anchor
-- **Wipe**: each image against the anchor (image | anchor), the dividers move together
+- **Wipe**: each image against the anchor, in the order they show (the earlier one on the left), the dividers move together
 - **Single**: one image at a time, in place: <kbd>t</kbd> or a click shows the next, <kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>9</kbd>
   the image of that number (`shown`, `onShownChange`)
-- **Difference**: the anchor, and each image's difference with it (image − anchor)
+- **Difference**: the anchor, and each image's difference with it, in the order they show (the earlier one − the later one)
 
 The tiles are the same in every mode but single: switching modes moves nothing. Above the images, a panel shows the
 pixel under the pointer in every image with its difference from the anchor's, and **how far apart** the images are:

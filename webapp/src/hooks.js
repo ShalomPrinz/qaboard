@@ -456,6 +456,7 @@ function useComparisonState() {
   const { data: milestones = no_milestones } = useQuery({ ...milestonesQuery(project), enabled: !!project && on_commit_page });
   // several references together in the image viewer, or one at a time: what the link says, else what users last chose
   const prefers_together = usePrefsStore(state => state.referencesTogether);
+  // (then what the images are compared with is `anchor`: 'new' or 'reference', the one shown, see src/selection.js)
   const together_mode = selected.together_mode ?? (prefers_together ? 'all' : 'one');
   const references = useReferences(selected, ref_commit, milestones, on_commit_page, together_mode);
   const together = useTogether(references, selected.reference_rules);
@@ -519,7 +520,7 @@ function useComparisonState() {
   );
 
   return useMemo(
-    () => ({ selected, project, project_data, list: searched_list, unsearched_list: default_list, new_commit, ref_commit, ...batches, ...config, metrics, selected_views, default_views, references, compared, labels, together, together_mode }),
+    () => ({ selected, project, project_data, list: searched_list, unsearched_list: default_list, new_commit, ref_commit, ...batches, ...config, metrics, selected_views, default_views, references, compared, labels, together, together_mode, anchor: selected.anchor }),
     [selected, project, project_data, searched_list, default_list, new_commit, ref_commit, batches, config, metrics, selected_views, default_views, references, compared, labels, together, together_mode],
   );
 }

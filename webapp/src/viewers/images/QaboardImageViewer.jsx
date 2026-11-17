@@ -14,7 +14,7 @@ import { run_view } from '../runView';
 import { errorMessage, http, isAbort } from '../../api/http';
 import { track } from '../../analytics';
 import { updateSelected, useComparison, useLabels, useSelected, useSiteConfig, useUser } from '../../hooks';
-import { show_reference } from '../../selection';
+import { set_anchor, show_reference } from '../../selection';
 import { usePrefsStore } from '../../stores/prefs';
 import { at_most, is_same_data } from '../../utils';
 import { doneAgainInPlace, STALE_WARNING } from '../../utils/attempts';
@@ -321,9 +321,10 @@ const ImageViewerForRuns = ({
   const has_reference = together ? !!reference_image : !!reference;
   // With other references shown together: the references in the order of their tabs, each in its tile after the new
   // image. They keep their tile whatever happens (identical, missing, loading), so that the images keep their place.
-  // The one selected (the reference compared everywhere) is the anchor: the image viewer compares the others with it.
+  // The anchor is the new image, or the reference selected when users pick it: the image viewer compares the others with it.
   const selected = useSelected();
-  const primary = useComparison()?.references?.find(r => r.is_shown);
+  const comparison = useComparison();
+  const primary = comparison?.references?.find(r => r.is_shown);
   const sides = [];
   if (together) {
     const tabs = [
@@ -350,12 +351,14 @@ const ImageViewerForRuns = ({
     }
   }
   // the images' places in the viewer: new, then the references
-  const anchor = 1 + sides.findIndex(side => side.primary);
+  // the anchor: the new image, unless users picked the reference selected
+  const anchor = comparison?.anchor === 'reference' ? 1 + sides.findIndex(side => side.primary) : 0;
   const side_ids = ['new', ...sides.map(side => side.id)];
-  // clicking an image's name selects its reference, like its tab does
+  // clicking an image's name makes it the anchor, like its tab does: a reference is selected too
   const selectSide = index => {
+    if (index === 0) return updateSelected(set_anchor(selected, 'new'));
     const side = sides[index - 1];
-    if (side && !side.primary) updateSelected(show_reference(selected, side.number - 1));
+    if (side) updateSelected({ ...(side.primary ? {} : show_reference(selected, side.number - 1)), ...set_anchor(selected, 'reference') });
   };
   const show_details = usePrefsStore(state => state.imageDetails);
   const setShowDetails = usePrefsStore(state => state.setImageDetails);
@@ -432,7 +435,7 @@ const ImageViewerForRuns = ({
   return <ImageViewer
     className="qaboard-image-viewer"
     style={{ width: fullscreen ? '100%' : at_most(style?.width), maxWidth: '100%' }}
-    image={together ? { ...image, canAnchor: false } : image}
+    image={image}
     reference={together ? sides[0].image : reference}
     more={sides.slice(1).map(side => side.image)}
     anchor={anchor}

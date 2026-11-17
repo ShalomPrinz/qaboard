@@ -143,6 +143,13 @@ describe('references shown together with the one compared', () => {
     expect(comparison.together_mode).toBe('one');
   });
 
+  test('the anchor is the new results, unless the link says the reference', () => {
+    open('compare=ccc111');
+    expect(comparison.anchor).toBe('new');
+    act(() => history.replace(`${window.location.pathname}${window.location.search}&anchor=reference`));
+    expect(comparison.anchor).toBe('reference');
+  });
+
   test('with one reference there is nothing to show together', () => {
     open('together=1');
     expect(comparison.together).toEqual([]);

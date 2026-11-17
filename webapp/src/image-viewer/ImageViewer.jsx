@@ -990,6 +990,7 @@ export const ImageViewer = ({
         anchor={images.a}
         anchorName={names.a}
         anchorSize={size_a}
+        anchorFirst={anchor_index < place}
         mode={mode}
         hidden={single && shown_index !== place}
         active={visible}
@@ -1055,7 +1056,7 @@ export const ImageViewer = ({
         {diff_error && <div className="qiv-message qiv-pane-message">{diff_error}</div>}
       </div>}
       <div className="qiv-stage-notes" style={n_way ? { left: slot(anchor_index).left + 6, bottom: stage_height - slot(anchor_index).top - pane_height + 6, maxWidth: pane_width - 12 } : undefined}>
-        {mode === 'difference' && !diff_between && <DiffLegend diff={diff} names={n_way ? ['each image', names.a] : [names[first], names[second]]} />}
+        {mode === 'difference' && !diff_between && <DiffLegend diff={diff} names={n_way ? ['the earlier image', 'the later one'] : [names[first], names[second]]} />}
         <ValuesBadge drawn={pixel_source !== 'off' ? values_drawn : null} />
       </div>
       {mode === 'wipe' && !n_way && <>

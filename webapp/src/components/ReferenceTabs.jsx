@@ -5,9 +5,12 @@
 //     right-click or "⋯" for the rest. "r" shows the next reference, "Shift r" the previous one.
 //     Hovering a tab shows what the reference's bar would: its commit, batch, filter, runs, and if it's the same as new.
 //   - the image viewer shows them all together by default (useComparison().together_mode 'all', and .together).
-//     The tab selected is the anchor, with an anchor icon: the reference in the bottom bar, everything is compared with
-//     it (the metrics, the other viewers, the other images). The other tabs have a checkbox, ticked: users untick those
-//     they don't want to see.
+//     The images are compared with the anchor, its tab has an anchor icon (useComparison().anchor): the top results
+//     by default, or the reference selected once users click a reference's tab (everything is then compared with it:
+//     the metrics, the other viewers, the other images). A click on the top results' tab makes them the anchor again;
+//     "r" changes the reference, not which bar is the anchor.
+//     The other references' tabs have a checkbox, ticked: users untick those they don't want to see. The reference
+//     selected is always shown.
 //     "One at a time | Together", after the tabs, goes back to one reference at a time: the tabs have their plain dot.
 //     The choice is in the link, and remembered for other pages (the `referencesTogether` preference).
 //     Dots, checkboxes and the anchor take the same room: nothing moves.
@@ -43,7 +46,7 @@ import { useComparison, useSiteConfig, updateSelected, usePrefetchCommitPage } f
 import { usePrefsStore } from "../stores/prefs";
 import {
   add_reference, duplicate_reference, is_default_name, move_reference, remove_reference, rename_reference, show_reference, swap_with_top,
-  toggle_together, set_together_mode,
+  toggle_together, set_together_mode, set_anchor,
 } from "../selection";
 import { available_batch } from "../selectors/batches";
 import { CommitAvatar } from "./avatars";
@@ -311,6 +314,10 @@ const Tab = styled.div`
     height: 12px;
     color: var(--side-color);
   }
+  /* the reference compared, when it isn't the anchor: always shown, a click there is a click on its tab */
+  .qa-tab-check:disabled {
+    pointer-events: none;
+  }
   /* ...filled when they are shown */
   .qa-tab-check {
     appearance: none;
@@ -532,7 +539,8 @@ const runs_text = batch => {
 };
 
 // Everything about a reference, on hover: what the reference's bar would show
-// `together`: { mode, primary }, see ReferenceTabs. The references are shown together ('all') with the one compared, `primary`
+// `together`: { mode, anchor, anchor_name, primary }, see ReferenceTabs. The references are shown together ('all') with the
+// one compared, `primary`; the images are compared with the anchor
 const TabCard = ({ reference, project, batch_counts, together }) => {
   const { commit } = reference;
   const batch = reference_batch(reference);
@@ -579,13 +587,14 @@ const TabCard = ({ reference, project, batch_counts, together }) => {
     </div>
     <div className={`qa-card-hint ${Classes.TEXT_MUTED}`}>
       {reference.is_top
-        ? 'The references are compared with it. Drag it on a reference to swap them'
-        : reference.is_shown ? (together?.mode === 'all'
-          ? "The anchor: the top results, and the other references' images, are compared with it. Drag it on the top results to swap them"
-          : 'Compared with the top results. Drag it on them to swap them')
-        : reference.together ? <>Shown next to <strong>{together.primary}</strong> in the image viewer. Click to compare everything with it</>
-        : together?.mode === 'all' ? 'Not shown in the image viewer: tick it. Click to compare with it'
-        : 'Click to compare with it'}
+        ? (together.mode !== 'all' ? 'The references are compared with it. Drag it on a reference to swap them'
+          : together.anchor === 'new' ? "The anchor: the references, and their images, are compared with it. Drag it on a reference to swap them"
+          : 'The references are compared with it. Click to compare the other images with it too: make it the anchor')
+        : reference.is_shown ? (together.mode !== 'all' ? 'Compared with the top results. Drag it on them to swap them'
+          : together.anchor === 'reference' ? "The anchor: the top results, and the other references' images, are compared with it. Drag it on the top results to swap them"
+          : 'Compared with the top results. Click to compare the other images with it too: make it the anchor')
+        : together.mode !== 'all' ? 'Click to compare with it'
+        : <>{reference.together ? <>Shown next to <strong>{together.anchor_name}</strong> in the image viewer</> : 'Not shown in the image viewer: tick it'}. Click to compare everything with it: it becomes the anchor</>}
       {' '}· double-click to rename · right-click or ⋯ for more
     </div>
   </Card>;
@@ -621,8 +630,12 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
   // milestones are called by their name, also instead of the names we give, like "ref 2"
   const rename = () => setRenaming(reference.milestone && is_default_name(reference.label) ? '' : reference.label || '');
   const { is_top } = reference;
-  // the references shown together with the one compared: { mode, primary, toggle, setMode }, see ReferenceTabs.
-  // Not for the top results.
+  // the references shown together with the one compared: { mode, anchor ('new' or 'reference'), anchor_name, primary,
+  // toggle, setMode }, see ReferenceTabs. The images are compared with the anchor: the top results, or the reference shown.
+  const all_together = together.mode === 'all';
+  const is_anchor = all_together && (is_top ? together.anchor === 'new' : reference.is_shown && together.anchor === 'reference');
+  // together, a click on the top results makes them the anchor
+  const top_button = is_top && !!actions.show;
   const { together } = actions;
   // a press on the checkbox is not the start of a drag of the tab
   const pressed_check = useRef(false);
@@ -659,9 +672,11 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
   const on_tab = event => event.currentTarget.contains(event.target) && !event.target.closest?.('.qa-tab-menu, .qa-tab-check');
   const tab = <Tab
     ref={element}
-    role={is_top ? undefined : 'tab'}
+    role={is_top ? (top_button ? 'button' : undefined) : 'tab'}
     tabIndex={0}
     aria-selected={is_top ? undefined : reference.is_shown}
+    aria-pressed={top_button ? is_anchor : undefined}
+    title={top_button && !is_anchor ? `Compare the other images with ${reference.display_label}: make it the anchor` : undefined}
     aria-label={`${what}: ${[reference.display_label, ...details.map(d => d.text)].join(', ')}`}
     data-lit={reference.is_shown || undefined}
     data-top={is_top || undefined}
@@ -678,27 +693,36 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
     onKeyDown={event => {
       if (renaming !== null || event.target !== event.currentTarget) return;
       if (event.key === 'F2') rename();
+      if ((event.key === 'Enter' || event.key === ' ') && actions.show) { event.preventDefault(); actions.show(); }
       if (is_top) return;
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); actions.show(); }
       else if (event.key === 'Delete' || event.key === 'Backspace') actions.remove();
       else if (event.altKey && event.key === 'ArrowLeft') actions.move(reference.index - 1);
       else if (event.altKey && event.key === 'ArrowRight') actions.move(reference.index + 1);
     }}
   >
     {(drop === 'before' || drop === 'after') && <span className="qa-drop-marker" aria-hidden/>}
-    {is_top ? <span className="qa-tab-dot"/>
-      : together.mode !== 'all' ? <span className="qa-tab-dot qa-tab-mark"/>
+    {is_anchor
+      ? <span className="qa-tab-anchor" role="img"
+          aria-label={`${reference.display_label}: the anchor. The other images are compared with it`}
+          title={`${reference.display_label}: the anchor. The other images are compared with it`}
+        ><Icon icon="anchor" size={12}/></span>
+      : is_top || !all_together ? <span className="qa-tab-dot qa-tab-mark"/>
       : reference.is_shown
-        ? <span className="qa-tab-anchor" role="img"
-            aria-label={`${reference.display_label}: the anchor. The other images are compared with it`}
-            title={`${reference.display_label}: the anchor. The other images are compared with it`}
-          ><Icon icon="anchor" size={12}/></span>
+        ? <input
+            type="checkbox"
+            className="qa-tab-check"
+            checked
+            disabled
+            readOnly
+            aria-label={`${reference.display_label}: the reference compared everywhere, always shown`}
+            title="The reference compared everywhere: always shown"
+          />
         : <input
             type="checkbox"
             className="qa-tab-check"
             checked={reference.ticked}
-            aria-label={`Show ${reference.display_label} next to ${together.primary} in the image viewer`}
-            title={`Show ${reference.display_label} next to ${together.primary} in the image viewer`}
+            aria-label={`Show ${reference.display_label} next to ${together.anchor_name} in the image viewer`}
+            title={`Show ${reference.display_label} next to ${together.anchor_name} in the image viewer`}
             onChange={together.toggle}
           />}
     {renaming !== null
@@ -839,7 +863,7 @@ function useSideScroll() {
 
 export const ReferenceTabs = () => {
   const queryClient = useQueryClient();
-  const { project, selected, references, new_commit, compared, together_mode } = useComparison();
+  const { project, selected, references, new_commit, compared, together_mode, anchor } = useComparison();
   const setReferencesTogether = usePrefsStore(state => state.setReferencesTogether);
   const adding = useAddMenu(state => state.open);
   const setAdding = useAddMenu(state => state.setOpen);
@@ -989,6 +1013,13 @@ export const ReferenceTabs = () => {
     }
   }
 
+  const together_info = {
+    mode: together_mode,
+    anchor,
+    anchor_name: anchor === 'new' ? top.display_label : shown.display_label,
+    primary: shown.display_label,
+  };
+
   return <Strip style={{ top: strip_top }}>
     <div className="qa-tabs-top">
       <ReferenceTab
@@ -1000,6 +1031,9 @@ export const ReferenceTabs = () => {
         drop={drop_on('top')}
         drag={drag_props('top')}
         actions={{
+          // together, the images are compared with the anchor: a click makes it the top results
+          show: together_mode === 'all' ? () => updateSelected(set_anchor(resolved, 'new')) : undefined,
+          together: together_info,
           rename: label => updateSelected({ label_new: label }),
           duplicate: () => updateSelected(add_reference(resolved, { project: top.project, commit_id: top.commit_id, batch: top.batch, filter: top.filter, label: top.label || top.milestone ? `${top.display_label} copy` : undefined })),
           swap: { name: shown.display_label, can: can_swap(selected.ref_index), do: () => swap(selected.ref_index) },
@@ -1019,14 +1053,14 @@ export const ReferenceTabs = () => {
         drag={drag_props(reference.index)}
         actions={{
           count: references.length,
-          show: () => show(reference.index),
+          // together, the tab users click is the anchor too ("r" only changes the reference compared)
+          show: () => updateSelected({ ...show_reference(resolved, reference.index), ...(together_mode === 'all' ? set_anchor(resolved, 'reference') : {}) }),
           remove: () => updateSelected(remove_reference(resolved, reference.index)),
           rename: label => updateSelected(rename_reference(resolved, reference.index, label)),
           duplicate: () => updateSelected(duplicate_reference(resolved, reference.index, reference.display_label)),
           move: to => updateSelected(move_reference(resolved, reference.index, to)),
           together: {
-            mode: together_mode,
-            primary: shown.display_label,
+            ...together_info,
             toggle: () => updateSelected(toggle_together(resolved, reference.index)),
             setMode: setTogetherMode,
           },

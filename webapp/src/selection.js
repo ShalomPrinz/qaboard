@@ -103,6 +103,7 @@ const to_day = date => DateTime.fromJSDate(date).toISODate();
 // without it what users last chose, see together_mode in src/hooks.js).
 // Together, users untick those they don't want to see: `together`, true by default, is the reference's own
 // (?compare[0][together]=0), it follows it when references move. The primary is always shown.
+// Together, the images are compared with the anchor: the new results, or ?anchor=reference: the primary, whichever it is.
 const color_from_query = value => {
   if (value === undefined || value === null || value === '') return undefined;
   const color = Number(value);
@@ -311,6 +312,9 @@ export const toggle_together = (selected, index) => {
   return references_changes(references.map((r, i) => i === index ? { ...as_side(r), together: !is_ticked(r) } : r), ref_index, color_new);
 };
 
+// ...compare the images shown together with the new results ('new'), or with the reference shown ('reference')
+export const set_anchor = (selected, anchor) => ({ anchor: anchor === 'reference' ? 'reference' : 'new' });
+
 // ...show the references together ('all'), or one at a time ('one'): the link says it, whatever its readers last chose.
 // Together with every other reference unticked would show nothing more: they are ticked again.
 export const set_together_mode = (selected, mode) => {
@@ -494,6 +498,8 @@ export const selection_from_url = (match, search) => {
     date_range: date_range_from_query(query),
     // several references together in the image viewer ('all'), or one at a time ('one'). null: what users last chose
     together_mode: query.together === '1' || query.together === 'true' ? 'all' : query.together === '0' || query.together === 'false' ? 'one' : null,
+    // what the images shown together are compared with: the new results ('new'), or the reference shown ('reference')
+    anchor: query.anchor === 'reference' ? 'reference' : 'new',
     // how runs find their reference run, beyond the default: ?pair= ?prefer= ?pin= (src/matching/rules.js)
     reference_rules: rules_from_query(query),
   };
@@ -517,6 +523,7 @@ const selection_defaults = {
   label_new: '',
   label_ref: '',
   hide_ci: false,
+  anchor: 'new',
   ...rules_defaults,
 };
 const same_value = (value, default_value) => Array.isArray(value) || Array.isArray(default_value)

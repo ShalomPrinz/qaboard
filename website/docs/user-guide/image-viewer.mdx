@@ -310,18 +310,20 @@ To see new next to the last release and the latest `main` at once, stack those r
 shows the new image and every reference, each in its own tile, all zoomed and panned together, named in its
 reference's color. The tiles follow the order of the reference tabs, new first.
 
-The **anchor** is the selected reference, marked with an anchor icon on its tab and its image: the other images are
-compared with it, like everything else on the page. Click another image's name to select its reference, as with its
-tab or <kbd>r</kbd>. New can't be the anchor: to compare everything with it,
-[swap the bars](/docs/user-guide/comparing-results#several-references). The four modes, keys <kbd>1</kbd> to
-<kbd>4</kbd>, become:
+The other images are compared with the **anchor**, marked with an anchor icon on its tab and its image. It's new at
+first: every reference is compared with new, as with one reference. Click a reference's name, on its image or its tab,
+to select it and make it the anchor: the other images, new included, are then compared with it. Click new's name to
+make new the anchor again: the selected reference stays. <kbd>r</kbd> and <kbd>Shift</kbd> <kbd>r</kbd> change only the
+selected reference, which the rest of the page compares new with. The page's link keeps the anchor.
+
+The tiles stay in the tabs' order, whatever the anchor. The four modes, keys <kbd>1</kbd> to <kbd>4</kbd>, become:
 
 | Mode | Key | What you see |
 |---|---|---|
 | **Grid** | <kbd>1</kbd> | Each image in its tile, with how far it is from the anchor, e.g. *5.1 from master*. |
-| **Wipe** | <kbd>2</kbd> | Each image against the anchor. The dividers move together. |
+| **Wipe** | <kbd>2</kbd> | Each image against the anchor, the earlier one in the tabs' order on the left. The dividers move together. |
 | **Single** | <kbd>3</kbd> | One image at a time, in place: <kbd>t</kbd> or a click shows the next, <kbd>Shift</kbd> <kbd>t</kbd> the previous, <kbd>Shift</kbd> <kbd>1</kbd>…<kbd>9</kbd> that image. Every run's viewer flips together. |
-| **Difference** | <kbd>4</kbd> | Each image's difference with the anchor. The anchor's tile shows the anchor. |
+| **Difference** | <kbd>4</kbd> | Each image's difference with the anchor: the earlier one in the tabs' order minus the later one, e.g. new − reference, as with two images. The anchor's tile shows the anchor. |
 
 Switching modes or references moves no tile, and neither do references that are still loading (*Loading v1.2…*) or
 a missing run or file: the tile says why. A file picked in the **vs** menu
@@ -344,8 +346,8 @@ its name, e.g. *rc1 = master*. The list button in the toolbar, **Values under th
 <summary>Good to know</summary>
 
 - The tools that compare two images, [the analysis panel](#analysis), the blind test and
-  [where they differ](#where-they-differ), use new and the anchor. The blind test and the swap are offered only with
-  two images.
+  [where they differ](#where-they-differ), compare the anchor with the first other image. The blind test and the swap
+  are offered only with two images.
 - **How far apart** is measured on the views on your screen (8-bit, at screen resolution): a guide to what to look at,
   not a bit-accuracy check. See [bit accuracy](/docs/bit-accuracy) for that.
 - Images with another aspect ratio than the anchor's are compared at the same width.

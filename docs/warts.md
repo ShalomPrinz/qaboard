@@ -180,8 +180,6 @@ Pod Security, admission policies, Kueue/ResourceQuota) rather than re-implementi
 - Since Together is the default, each stacked reference that stays ticked loads all its runs (slow for commits with
   thousands of runs), and adds one or two tiled image viewers per run card: past a handful of references, the page gets
   slow. Loading only the runs matched to the cards shown would help. [M, no change]
-- The anchor is the selected reference, so new can't be the anchor: comparing every reference with new takes swapping
-  the bars. [S, behaviour]
 - "How far apart" in the image viewer is the mean difference of the displayed views (8-bit, at screen resolution), not
   of the files: a guide, not a bit-accuracy check. Images with another aspect ratio than the anchor's are compared at
   the same width, so their bottoms don't match. [M, behaviour]
