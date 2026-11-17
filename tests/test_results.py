@@ -633,6 +633,15 @@ class TestRunsAcrossCommits(unittest.TestCase):
     self.assertEqual(get.call_args.kwargs['params']['limit'], 3)
     self.assertEqual(len(found), 3)
 
+  def test_pages_stop_when_nothing_new_comes(self):
+    r = mock.Mock(status_code=200, headers={'X-Scanned': '5000'})
+    r.json.return_value = project_runs_page(range(1, 501))
+    stderr = io.StringIO()
+    with mock.patch('requests.request', return_value=r) as get, redirect_stderr(stderr):
+      found = runs(project='kitefin/detector', experiment='x', filter='lr', include_deleted=True)
+    self.assertEqual((len(found), get.call_count), (500, 2))
+    self.assertIn('only looked at the 5000 latest runs', stderr.getvalue())
+
   def test_since(self):
     import datetime
     with mock_get([]) as get:
@@ -678,6 +687,19 @@ class TestRunsPageUrl(unittest.TestCase):
     self.assertNotIn('experiment', params)
     with self.assertRaisesRegex(ValueError, 'Runs page'):
       runs("https://qaboard/kitefin/detector/runs", commit='abc')
+
+  def test_commit_pages_stay_commit_pages(self):
+    with mock_get(commit_response()) as get:
+      runs("https://qaboard/ml/runs/commit/abc?batch=ci")
+    self.assertEqual(get.call_args.args[1], 'https://qaboard/api/v1/commit/abc')
+    self.assertEqual(get.call_args.kwargs['params']['project'], 'ml/runs')
+
+  def test_like_the_web_app(self):
+    with mock_get([]) as get:
+      runs("https://qaboard/p/runs?days=0&scope=others&status=done,failed")
+    params = get.call_args.kwargs['params']
+    self.assertEqual((params['since_days'], params['status']), (30, 'failed'))
+    self.assertNotIn('scope', {k: v for k, v in params.items() if v != 'all'})
 
   def test_under_a_prefix(self):
     with mock_get([]) as get:

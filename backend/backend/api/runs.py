@@ -20,9 +20,14 @@ from .auth import is_authorized_user, forbidden_project
 
 DEFAULT_DAYS = 30
 MAX_DAYS = 3650
+# The CI's runs are many more: with them, a shorter window keeps the queries bounded
+MAX_DAYS_WITH_CI = 90
 # With a text filter, we read runs until a page is full, up to this many: the filter is the web app's, in Python
 MAX_SCANNED = 5000
 SCAN_CHUNK = 500
+MAX_OFFSET = 100000
+# A query that takes longer is a bug or a selection too wide: the client hears so, the server goes on
+STATEMENT_TIMEOUT_MS = 30000
 
 
 def _int(name, default, low, high):
@@ -30,9 +35,9 @@ def _int(name, default, low, high):
   if value is None or value == '':
     return default
   value = int(value)
-  if value < low:
-    raise ValueError(f"{name} must be at least {low}")
-  return min(value, high)
+  if value < low or value > high:
+    raise ValueError(f"{name} must be between {low} and {high}")
+  return value
 
 
 def runs_filter():
@@ -48,7 +53,11 @@ def runs_filter():
     identity = identity_of(g.actor.user)
     if identity is None:
       raise PermissionError("Sign in to see your runs.")
+  origins = parse_origins(request.args.get('origin'))
+  with_ci = not origins or 'ci' in origins
   days = _int('since_days', DEFAULT_DAYS, 1, MAX_DAYS)
+  if with_ci and days > MAX_DAYS_WITH_CI:
+    raise ValueError(f"With the CI's runs, ask for at most {MAX_DAYS_WITH_CI} days (since_days), or leave them out with origin=webapp,local")
   statuses = [s.strip() for s in (request.args.get('status') or '').split(',') if s.strip()]
   unknown = [s for s in statuses if s not in STATUSES]
   if unknown:
@@ -61,7 +70,7 @@ def runs_filter():
     identity=identity,
     scope=scope,
     user=request.args.get('user') or None,
-    origins=parse_origins(request.args.get('origin')),
+    origins=origins,
     statuses=statuses,
     from_code=request.args.get('from_code') in ('1', 'true'),
   )
@@ -71,6 +80,20 @@ def _refused(error):
   if isinstance(error, PermissionError):
     return jsonify({"error": f"{error}", "reason": "sign_in_required"}), 401
   return jsonify({"error": f"{error}"}), 400
+
+
+def _bounded():
+  """Queries of this request stop after STATEMENT_TIMEOUT_MS (for the transaction)"""
+  from sqlalchemy import text
+  db_session.execute(text(f"SET LOCAL statement_timeout = {int(STATEMENT_TIMEOUT_MS)}"))
+
+
+def _too_long(error):
+  """A query stopped by the statement timeout: say what to do. Other errors are raised again."""
+  if 'statement timeout' not in str(error) and 'canceling statement' not in str(error):
+    raise error
+  db_session.rollback()
+  return jsonify({"error": "This selection takes too long to list: shorten the time window, open an experiment, or leave out the CI's runs.", "reason": "too_long"}), 503
 
 
 def _json(payload, has_more=None):
@@ -97,7 +120,11 @@ def get_experiments():
     return _refused(e)
   if not is_authorized_user(None, selection.project):
     return forbidden_project(selection.project)
-  rows, has_more = experiments(db_session, selection)
+  try:
+    _bounded()
+    rows, has_more = experiments(db_session, selection)
+  except Exception as e:
+    return _too_long(e)
   return _json(rows, has_more)
 
 
@@ -149,37 +176,44 @@ def get_runs():
   - ?experiment=a/b: the runs of the experiment "a/b" and of those under it ("a/b/c")
   - ?status=running,pending,failed,finished
   - ?q=: the web app's filter (qaboard/filters.py), also matching the experiment, who ran it and the commit.
-  - Pages: ?limit= (default 100, at most 500) &offset=. X-Has-More says if there are more.
+  - Pages: ?limit= (default 100, at most 500) &offset= (at most 100000). X-Has-More says if there are more.
+  With the CI's runs (no ?origin=, or with ci), ?since_days= is at most 90.
   """
   try:
     selection = runs_filter()
     limit = _int('limit', 100, 1, 500)
-    offset = _int('offset', 0, 0, 100000)
+    offset = _int('offset', 0, 0, MAX_OFFSET)
   except (ValueError, PermissionError) as e:
     return _refused(e)
   if not is_authorized_user(None, selection.project):
     return forbidden_project(selection.project)
+  try:
+    return _runs_page(selection, limit, offset)
+  except Exception as e:
+    return _too_long(e)
 
+
+def _runs_page(selection, limit, offset):
+  _bounded()
   q = (request.args.get('q') or '').strip()
   if not q:
     ids = run_ids(db_session, selection, limit + 1, offset)
     return _json(_load(ids[:limit]), len(ids) > limit)
 
-  # The filter is matched in Python: we read the runs in order until we have the page, or read enough.
-  # offset counts matching runs.
+  # The filter is matched in Python, on the MAX_SCANNED latest runs of the selection (one query), read in chunks until
+  # we have the page. offset counts matching runs. X-Scanned says when the filter didn't see every run.
   matches = match_query(q)
-  found, scanned, exhausted = [], 0, False
-  while len(found) < offset + limit + 1 and scanned < MAX_SCANNED:
-    ids = run_ids(db_session, selection, SCAN_CHUNK, scanned)
-    scanned += len(ids)
-    found.extend(run for run in _load(ids) if matches(searched_text(run)))
-    if len(ids) < SCAN_CHUNK:
-      exhausted = True
-      break
+  candidates = run_ids(db_session, selection, MAX_SCANNED + 1, 0)
+  truncated = len(candidates) > MAX_SCANNED
+  candidates = candidates[:MAX_SCANNED]
+  found, read = [], 0
+  while len(found) < offset + limit + 1 and read < len(candidates):
+    chunk = candidates[read:read + SCAN_CHUNK]
+    read += len(chunk)
+    found.extend(run for run in _load(chunk) if matches(searched_text(run)))
   page = found[offset:offset + limit]
-  response = _json(page, len(found) > offset + limit or not exhausted)
-  if not exhausted and len(found) <= offset + limit:
-    # we stopped reading before the page was full: the web app says the filter only looked at the latest runs
-    response.headers['X-Scanned'] = str(scanned)
+  response = _json(page, len(found) > offset + limit)
+  if truncated:
+    response.headers['X-Scanned'] = str(MAX_SCANNED)
     response.headers['Access-Control-Expose-Headers'] = 'X-Has-More, X-Scanned'
   return response

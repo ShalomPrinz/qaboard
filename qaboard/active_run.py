@@ -329,7 +329,7 @@ def start_run(input: Optional[str] = None, *, configs: Optional[Sequence[Any]] =
   if experiment is not None and batch is not None and experiment != batch:
     raise TypeError(f"start_run(experiment={experiment!r}, batch={batch!r}): they are the same argument, give one of them")
   experiment = experiment if experiment is not None else batch
-  if experiment is not None and (not isinstance(experiment, str) or not experiment.strip('/ ')):
+  if experiment is not None and not isinstance(experiment, str):
     raise TypeError(f"start_run(experiment=...) is a name like 'backbone/lr-sweep', not {experiment!r}")
   if input is not None and (not isinstance(input, (str, os.PathLike)) or not str(input).strip()):
     raise TypeError(f"start_run(input=...) is a name or a path, like 'train/coco-mini', not {input!r}")
@@ -366,8 +366,8 @@ def start_run(input: Optional[str] = None, *, configs: Optional[Sequence[Any]] =
     raise ValueError(f"start_run(input={input!r}): the input is a name or a path under its database, without '..'")
   input_name = input_path.as_posix()
 
-  # "a//b/" is "a/b": the tree would have empty levels
-  raw_batch = '/'.join(part.strip() for part in experiment.split('/') if part.strip()) if experiment else 'default'
+  # as named, like `qa --label`: '' is the default
+  raw_batch = experiment or 'default'
   batch_label = raw_batch if (not share or setup.is_ci) else f"@{setup.user}| {raw_batch}"
   platform = platform or setup.platform
 

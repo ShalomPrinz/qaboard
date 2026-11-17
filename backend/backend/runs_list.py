@@ -10,7 +10,7 @@ window (batches.latest_output_datetime, indexed), then read those batches' runs 
 They are plain SQL, so that tests run them on a real PostgreSQL (tests/test_runs_list.py).
 
 - experiments(): the tree, one row per experiment with its counts of runs.
-- run_ids(): a page of runs, the running first, then the latest.
+- run_ids(): a page of runs, the running first, then the latest (when they started, were queued, or were created).
 """
 import datetime
 from dataclasses import dataclass, field
@@ -86,11 +86,11 @@ class RunsFilter:
     where, params = self.batches_where()
     where.append("o.output_type IS DISTINCT FROM 'optim_iteration'")
     # a batch with a recent run can have old runs: we keep the window
-    where.append("coalesce(o.started_at, o.created_date) >= :since")
+    where.append("coalesce(o.started_at, o.queued_at, o.created_date) >= :since")
     statuses = []
     for status in self.statuses:
       if status == 'running':
-        statuses.append("o.is_running")
+        statuses.append("(o.is_pending AND o.is_running)")
       elif status == 'pending':
         statuses.append("(o.is_pending AND o.is_running IS NOT TRUE)")
       elif status == 'failed':
@@ -124,7 +124,7 @@ def experiments_sql(selection: RunsFilter) -> Tuple[str, Dict[str, Any]]:
       count(DISTINCT r.id) AS batches,
       max(r.latest_output_datetime) AS latest,
       count(o.id) AS runs,
-      count(o.id) FILTER (WHERE o.is_running) AS running,
+      count(o.id) FILTER (WHERE o.is_pending AND o.is_running) AS running,
       count(o.id) FILTER (WHERE o.is_pending AND o.is_running IS NOT TRUE) AS pending,
       count(o.id) FILTER (WHERE o.is_failed AND o.is_pending IS NOT TRUE) AS failed,
       bool_or(r.from_code) AS from_code,
@@ -132,7 +132,7 @@ def experiments_sql(selection: RunsFilter) -> Tuple[str, Dict[str, Any]]:
     FROM recent r
     LEFT JOIN outputs o ON o.batch_id = r.id
       AND o.output_type IS DISTINCT FROM 'optim_iteration'
-      AND coalesce(o.started_at, o.created_date) >= :since
+      AND coalesce(o.started_at, o.queued_at, o.created_date) >= :since
     GROUP BY r.experiment
     ORDER BY latest DESC NULLS LAST, r.experiment
     LIMIT {MAX_EXPERIMENTS + 1}
@@ -172,7 +172,7 @@ def run_ids_sql(selection: RunsFilter, limit: int, offset: int) -> Tuple[str, Di
     JOIN batches b ON b.id = o.batch_id
     JOIN ci_commits c ON c.id = b.ci_commit_id
     WHERE {' AND '.join(where)}
-    ORDER BY o.is_running IS TRUE DESC, coalesce(o.started_at, o.created_date) DESC, o.id DESC
+    ORDER BY (o.is_pending AND o.is_running) IS TRUE DESC, coalesce(o.started_at, o.queued_at, o.created_date) DESC, o.id DESC
     LIMIT :limit OFFSET :offset
   """
   return sql, {**params, 'limit': limit, 'offset': offset}
@@ -184,11 +184,19 @@ def run_ids(session, selection: RunsFilter, limit: int, offset: int) -> List[int
   return [row[0] for row in _execute(session, sql, params)]
 
 
-def has_runs_from_code(session, project: str) -> bool:
-  """If a project has runs started from code: the Runs page is in its sidebar. Uses the partial index ix_batches_sdk."""
-  sql = """
-    SELECT 1 FROM batches b JOIN ci_commits c ON c.id = b.ci_commit_id
-    WHERE b.data ? 'sdk' AND c.project_id = :project
-    LIMIT 1
+def mark_runs_from_code(session, batch_id: int, project: str) -> None:
   """
-  return _execute(session, sql, {'project': project}).first() is not None
+  A batch got a run started from code: it says so (Batch.data['sdk'], ?from_code=1), and its project gets the Runs page
+  (Project.data['has_runs_from_code']). In SQL, without rewriting the rows' data: other requests change them too, and
+  once marked, nothing is written again.
+  """
+  from sqlalchemy import text
+  session.execute(text("""
+    UPDATE batches SET data = coalesce(data, '{}'::jsonb) || '{"sdk": true}'::jsonb
+    WHERE id = :batch AND NOT (coalesce(data, '{}'::jsonb) ? 'sdk')
+  """), {'batch': batch_id})
+  session.execute(text("""
+    UPDATE projects SET data = coalesce(data, '{}'::jsonb) || '{"has_runs_from_code": true}'::jsonb
+    WHERE id = :project AND NOT (coalesce(data, '{}'::jsonb) ? 'has_runs_from_code')
+  """), {'project': project})
+  session.commit()

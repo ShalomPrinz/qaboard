@@ -408,6 +408,9 @@ paths:
           description: Runs. The `X-Has-More` header says if there are more.
           headers:
             X-Has-More: {$ref: "#/components/headers/X-Has-More"}
+            X-Scanned:
+              description: With `q`, when the filter only looked at this many runs, the latest of the selection.
+              schema: {type: string}
           content:
             application/json:
               schema:
@@ -886,7 +889,7 @@ components:
     RunsSinceDays:
       name: since_days
       in: query
-      description: Only runs from the last days.
+      description: Only runs from the last days. At most 90 with the CI's runs (no `origin`, or one with `ci`).
       schema: {type: integer, minimum: 1, maximum: 3650, default: 30}
     RunsScope:
       name: scope

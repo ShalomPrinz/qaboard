@@ -65,8 +65,9 @@ def postgres():
       ) ON COMMIT DROP;
       CREATE TEMPORARY TABLE outputs (
         id serial PRIMARY KEY, batch_id integer, output_type text, created_date timestamp, started_at timestamp,
-        is_pending boolean, is_running boolean, is_failed boolean, deleted boolean
+        queued_at timestamp, is_pending boolean, is_running boolean, is_failed boolean, deleted boolean
       ) ON COMMIT DROP;
+      CREATE TEMPORARY TABLE projects (id text PRIMARY KEY, data jsonb NOT NULL DEFAULT '{}') ON COMMIT DROP;
     """)
     yield cursor
   finally:
@@ -98,10 +99,10 @@ class Data:
     )
     return self.cursor.fetchone()[0]
 
-  def run(self, batch_id, started=NOW, status='finished', output_type=''):
+  def run(self, batch_id, started=NOW, status='finished', output_type='', created=None, queued=None):
     self.cursor.execute(
-      "INSERT INTO outputs (batch_id, output_type, created_date, started_at, is_pending, is_running, is_failed, deleted) VALUES (%s, %s, %s, %s, %s, %s, %s, false) RETURNING id",
-      (batch_id, output_type, started, started, status in ('running', 'pending'), status == 'running', status == 'failed'),
+      "INSERT INTO outputs (batch_id, output_type, created_date, started_at, queued_at, is_pending, is_running, is_failed, deleted) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, false) RETURNING id",
+      (batch_id, output_type, created or started, started, queued, status in ('running', 'pending'), status in ('running', 'stale'), status == 'failed'),
     )
     return self.cursor.fetchone()[0]
 
@@ -178,6 +179,44 @@ def test_experiments_and_runs(postgres):
   assert ids(postgres, since=NOW - datetime.timedelta(hours=2, minutes=30)) == [r3, r2]
 
 
+def test_old_runs_done_again_and_stale_flags(postgres):
+  data = Data(postgres)
+  batch = data.batch('@alice| sweep')
+  # a run from last month, queued again an hour ago: in the window while it waits
+  redo = data.run(batch, started=None, status='pending', created=NOW - datetime.timedelta(days=30), queued=NOW - datetime.timedelta(hours=1))
+  # a run that ended, from a client that left is_running set: finished, not running
+  stale = data.run(batch, started=NOW - datetime.timedelta(hours=2), status='stale')
+  assert ids(postgres) == [redo, stale]
+  assert ids(postgres, statuses=['running']) == []
+  assert ids(postgres, statuses=['finished']) == [stale]
+  assert ids(postgres, statuses=['pending']) == [redo]
+  assert tree(postgres)['sweep']['running'] == 0
+
+
+def test_runs_from_code_are_marked_once(postgres):
+  from backend.runs_list import mark_runs_from_code
+  data = Data(postgres)
+  batch = data.batch('@alice| sweep', sdk=False)
+  postgres.execute("INSERT INTO projects (id, data) VALUES ('kitefin/detector', '{\"qatools_config\": {}}')")
+
+  class Session:
+    def execute(self, statement, params):
+      sql = str(getattr(statement, 'text', statement))
+      return execute_only(postgres, sql, params)
+    def commit(self):
+      pass
+  for _ in range(2):
+    mark_runs_from_code(Session(), batch, 'kitefin/detector')
+  postgres.execute("SELECT data FROM batches WHERE id = %s", (batch,))
+  assert postgres.fetchone()[0] == {'sdk': True}
+  postgres.execute("SELECT data FROM projects WHERE id = 'kitefin/detector'")
+  assert postgres.fetchone()[0] == {'qatools_config': {}, 'has_runs_from_code': True}
+
+
+def execute_only(cursor, sql, params):
+  cursor.execute(re.sub(r'(?<![:\w]):(\w+)', r'%(\1)s', sql.replace('%', '%%')), params)
+
+
 # The endpoints, without a database: what they accept, and the filter's paging
 @pytest.fixture
 def runs_api(dummy_app, monkeypatch):
@@ -224,29 +263,67 @@ def fake_runs(n):
   } for i in range(n)]
 
 
-def test_text_filter_reads_until_the_page_is_full(runs_api, dummy_app, monkeypatch):
-  everything = fake_runs(1200)
-  reads = []
-  def run_ids(session, selection, limit, offset):
-    reads.append((limit, offset))
-    return [r['id'] for r in everything[offset:offset + limit]]
-  monkeypatch.setattr(runs_api, 'run_ids', run_ids)
-  monkeypatch.setattr(runs_api, '_load', lambda ids: [everything[i] for i in ids])
-  # lr=1x: 1, 10-19, 100-199, 1000-1199: one in a hundred in the first chunk
+@pytest.fixture
+def fake_db(runs_api, monkeypatch):
+  """The endpoint's queries, on a list of runs. Returns the reads: (limit, offset) of run_ids, and the ids loaded."""
+  reads = {'run_ids': [], 'loaded': 0}
+  def setup(n):
+    everything = fake_runs(n)
+    def run_ids(session, selection, limit, offset):
+      reads['run_ids'].append((limit, offset))
+      return [r['id'] for r in everything[offset:offset + limit]]
+    def load(ids):
+      reads['loaded'] += len(ids)
+      return [everything[i] for i in ids]
+    monkeypatch.setattr(runs_api, 'run_ids', run_ids)
+    monkeypatch.setattr(runs_api, '_load', load)
+    monkeypatch.setattr(runs_api, '_bounded', lambda: None)
+    return reads
+  return setup
+
+
+def test_text_filter_reads_until_the_page_is_full(runs_api, dummy_app, fake_db):
+  reads = fake_db(1200)
+  # train/1: 1, 10-19, 100-199, 1000-1199
   status, body, headers = call(dummy_app, runs_api.get_runs, '/api/v1/runs?project=p&q=train/1&limit=5')
   assert status == 200
   assert [r['id'] for r in body] == [1, 10, 11, 12, 13]
   assert headers['X-Has-More'] == 'true' and 'X-Scanned' not in headers
-  assert reads == [(runs_api.SCAN_CHUNK, 0)]
+  # one query for the candidates, and only the first chunk read
+  assert reads['run_ids'] == [(runs_api.MAX_SCANNED + 1, 0)] and reads['loaded'] == runs_api.SCAN_CHUNK
   # the experiment and who ran it match too
   status, body, headers = call(dummy_app, runs_api.get_runs, '/api/v1/runs?project=p&q=alice&limit=2&offset=1199')
   assert [r['id'] for r in body] == [1199] and headers['X-Has-More'] == 'false'
 
 
-def test_text_filter_says_when_it_stopped_reading(runs_api, dummy_app, monkeypatch):
+def test_text_filter_says_when_it_did_not_see_every_run(runs_api, dummy_app, fake_db, monkeypatch):
   monkeypatch.setattr(runs_api, 'MAX_SCANNED', 1000)
-  everything = fake_runs(3000)
-  monkeypatch.setattr(runs_api, 'run_ids', lambda session, selection, limit, offset: [r['id'] for r in everything[offset:offset + limit]])
-  monkeypatch.setattr(runs_api, '_load', lambda ids: [everything[i] for i in ids])
+  fake_db(3000)
   status, body, headers = call(dummy_app, runs_api.get_runs, '/api/v1/runs?project=p&q=nothing-matches')
-  assert body == [] and headers['X-Scanned'] == '1000' and headers['X-Has-More'] == 'true'
+  # no "more": asking again would read the same runs
+  assert body == [] and headers['X-Scanned'] == '1000' and headers['X-Has-More'] == 'false'
+
+
+@pytest.mark.parametrize('query, error', [
+  ('offset=100001', 'offset must be between'),
+  ('since_days=365', 'at most 90 days'),
+  ('since_days=365&origin=ci,local', 'at most 90 days'),
+])
+def test_wide_selections_are_refused(runs_api, dummy_app, query, error):
+  status, body, _ = call(dummy_app, runs_api.get_runs, f'/api/v1/runs?project=p&{query}')
+  assert status == 400 and error in body['error']
+
+
+def test_long_windows_without_the_ci(runs_api, dummy_app, fake_db):
+  fake_db(3)
+  status, body, _ = call(dummy_app, runs_api.get_runs, '/api/v1/runs?project=p&since_days=3650&origin=webapp,local')
+  assert status == 200 and len(body) == 3
+
+
+def test_slow_selections_say_what_to_do(runs_api, dummy_app, monkeypatch):
+  def slow(*args, **kwargs):
+    raise RuntimeError('canceling statement due to statement timeout')
+  monkeypatch.setattr(runs_api, '_bounded', lambda: None)
+  monkeypatch.setattr(runs_api, 'experiments', slow)
+  status, body, _ = call(dummy_app, runs_api.get_experiments, '/api/v1/experiments?project=p')
+  assert status == 503 and body['reason'] == 'too_long'

@@ -692,12 +692,8 @@ def get_project():
     return jsonify({"error": f"There is no project {project_id}."}), 404
 
   # Milestones from older versions, kept for rollbacks: they are in their own table, see /api/v1/milestones
-  from ..runs_list import has_runs_from_code
-  return jsonify({
-    **{k: v for k, v in project.data.items() if k != 'milestones'},
-    # the sidebar shows the Runs page
-    'has_runs_from_code': has_runs_from_code(db_session, project_id),
-  })
+  # (data.has_runs_from_code: the project's code creates runs, the sidebar shows the Runs page, see backend/runs_list.py)
+  return jsonify({k: v for k, v in project.data.items() if k != 'milestones'})
 
 
 # Views are counted at most once an hour per user and project: enough to tell projects people look at

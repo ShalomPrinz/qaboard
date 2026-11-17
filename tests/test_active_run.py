@@ -219,7 +219,7 @@ with qb.start_run(input="train/coco-mini") as run:
     server = self.server()
     result = self.python(server=server, code=(
       "import qaboard as qb\n"
-      "with qb.start_run(input='train/coco-mini', configs=['resnet50', {'lr': 0.001}], experiment='backbone//lr-sweep/') as run:\n"
+      "with qb.start_run(input='train/coco-mini', configs=['resnet50', {'lr': 0.001}], experiment='backbone/lr-sweep') as run:\n"
       "  assert (run.experiment, run.batch) == ('backbone/lr-sweep', '@alice| backbone/lr-sweep'), (run.experiment, run.batch)\n"
       "  assert run.run.experiment == 'backbone/lr-sweep'\n"
       "  run.log({'loss': 1.0})\n"
@@ -230,7 +230,7 @@ with qb.start_run(input="train/coco-mini") as run:
     # batch= is the same argument, by its first name
     result = self.python(QA_OFFLINE='1', code=(
       "import qaboard as qb\n"
-      "for kwargs in ({'experiment': 'a', 'batch': 'b'}, {'experiment': '/'}, {'experiment': 3}):\n"
+      "for kwargs in ({'experiment': 'a', 'batch': 'b'}, {'experiment': 3}):\n"
       "  try:\n"
       "    qb.start_run(capture_output=False, **kwargs)\n"
       "  except TypeError as e:\n"
@@ -239,6 +239,8 @@ with qb.start_run(input="train/coco-mini") as run:
       "    raise AssertionError(kwargs)\n"
       "with qb.start_run(experiment='x', batch='x', capture_output=False) as run:\n"
       "  assert run.experiment == 'x'\n"
+      "with qb.start_run(batch='', capture_output=False) as run:\n"
+      "  assert run.experiment == 'default'\n"
     ))
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertIn('they are the same argument', result.stdout)

@@ -159,24 +159,32 @@ def _runs_page(url: str, server: Optional[str] = None) -> Optional[Dict[str, Any
   segments = [s for s in path.split('/') if s]
   # like the web app's routes (webapp/src/route_paths.js): the project is everything before the last "runs"
   index = next((i for i in reversed(range(len(segments))) if segments[i] == 'runs'), None)
-  if index is None or index == 0 or 'commit' in segments[:index]:
+  if index is None or index == 0:
+    return None
+  # the web app's routes for commits, history... come first: /ml/runs/commit/abc is a commit of the project "ml/runs"
+  if any(segment in FIRST_ROUTES for segment in segments[1:]):
     return None
   query = parse_qs(parts.query, keep_blank_values=True)
   days = _text(query, 'days')
-  status = _text(query, 'status')
+  statuses = [s for s in (_text(query, 'status') or '').split(',') if s in STATUSES]
   selected = [int(i) for i in (_text(query, 'selected') or '').split(',') if i.strip().isdigit()]
   return {
     'server': (server or f"{parts.scheme}://{parts.netloc}").rstrip('/'),
     'project': '/'.join(segments[:index]),
     'experiment': '/'.join(segments[index + 1:]) or None,
-    'scope': _text(query, 'scope') or 'all',
-    'since': int(days) if days and days.isdigit() else 30,
-    'status': status.split(',') if status else None,
+    # like the web app (webapp/src/runs/state.js): what it doesn't know is the default
+    'scope': 'mine' if _text(query, 'scope') == 'mine' else 'all',
+    'since': int(days) if days and days.isdigit() and int(days) > 0 else 30,
+    'status': statuses or None,
     'filter': _text(query, 'q'),
     'user': _text(query, 'user'),
     'include_ci': _text(query, 'ci') == '1',
     'selected': selected,
   }
+
+
+# The web app's project routes matched before the Runs page (webapp/src/route_paths.js)
+FIRST_ROUTES = ('committer', 'commits', 'commit', 'dashboard', 'history', 'milestone')
 
 
 # Run's fields given as read-only mappings
@@ -477,7 +485,8 @@ def _token_for(server: str, token: Optional[str]) -> Optional[str]:
 
 
 def _request(server: str, path: str, params: Optional[Dict[str, Any]] = None, token: Optional[str] = None,
-             method: str = 'GET', json: Optional[Dict[str, Any]] = None, timeout: Optional[Tuple[float, float]] = None) -> Dict[str, Any]:
+             method: str = 'GET', json: Optional[Dict[str, Any]] = None, timeout: Optional[Tuple[float, float]] = None,
+             headers_out: Optional[Dict[str, str]] = None) -> Any:
   import requests
   token = _token_for(server, token)
   headers = {'Authorization': f"Bearer {token}"} if token else {}
@@ -491,13 +500,18 @@ def _request(server: str, path: str, params: Optional[Dict[str, Any]] = None, to
     refused = refusal(r)
     if refused:
       scope = 'ingest' if method != 'GET' else 'read'
-      hint = f"Sign in with `qa auth login {server}`, or set QABOARD_TOKEN to a token with the {scope} scope." if refused.get('reason') in ('login_required', 'ingest_token_required', 'missing_scope', 'token_expired', 'invalid_token') else "Ask the project's owners for access."
+      hint = f"Sign in with `qa auth login {server}`, or set QABOARD_TOKEN to a token with the {scope} scope." if refused.get('reason') in ('login_required', 'sign_in_required', 'ingest_token_required', 'missing_scope', 'token_expired', 'invalid_token') else "Ask the project's owners for access."
       raise ResultsError(f"{refused['error']} ({refused.get('reason')}). {hint}", status=r.status_code, reason=refused.get('reason') or 'refused')
     try:
       message = r.json().get('error') or r.text
     except ValueError:
       message = r.text
     raise ResultsError(f"{server} answered {r.status_code} to {path} ({params}): {message}", status=r.status_code)
+  if headers_out is not None:
+    # the answer's headers, e.g. X-Scanned
+    raw = getattr(r, 'headers', None)
+    if isinstance(raw, Mapping):
+      headers_out.update({k: v for k, v in raw.items() if isinstance(v, str)})
   try:
     return r.json()
   except ValueError as e:
@@ -579,16 +593,25 @@ def _project_runs(project: str, *, experiment: Optional[str], since: Any, scope:
   if not (include_ci if include_ci is not None else bool(experiment)):
     params['origin'] = 'webapp,local'
   rows: List[Dict[str, Any]] = []
+  seen: set = set()
   offset = 0
+  scanned = None
   while limit is None or len(rows) < limit:
     page_size = RUNS_PAGE if limit is None else min(RUNS_PAGE, limit - len(rows))
-    page = _request(server_url, 'runs', {**params, 'limit': page_size, 'offset': offset}, token)
+    headers: Dict[str, str] = {}
+    page = _request(server_url, 'runs', {**params, 'limit': page_size, 'offset': offset}, token, headers_out=headers)
     if not isinstance(page, list):
       raise ResultsError(f"{server_url} doesn't list runs across commits: update it, or name a commit")
-    rows.extend(page)
+    scanned = scanned or {k.lower(): v for k, v in headers.items()}.get('x-scanned')
+    new = [row for row in page if row.get('id') not in seen]
+    seen.update(row.get('id') for row in new)
+    rows.extend(new)
     offset += len(page)
-    if len(page) < page_size:
+    # the last page, or one that brings nothing new
+    if len(page) < page_size or not new:
       break
+  if scanned:
+    print(f"WARNING: the filter {filter!r} only looked at the {scanned} latest runs: give experiment= or a shorter since= to search the others.", file=sys.stderr)
   found = [Run.from_api(row, project=project, commit=(row.get('commit') or {}).get('id'),
                         batch=(row.get('batch') or {}).get('label') or 'default', server=server_url) for row in rows]
   if not include_deleted:
@@ -619,7 +642,8 @@ def runs(url: Optional[str] = None, *, project: Optional[str] = None, commit: Op
   of that experiment and of those under it, whoever ran them, on any commit, the running first, then the latest.
   `since`: days, a timedelta or a date (default: 30 days). `scope`: "mine", "others" or "all". `status`: "running",
   "pending", "failed", "finished", or several. `include_ci`: the CI's runs too (by default, only when `experiment` is
-  given). `filter` is the web app's filter. `limit`: at most this many runs (default: all of them).
+  given). `filter` is the web app's filter: it looks at the 5000 latest runs of the selection, and warns when there were
+  more. `limit`: at most this many runs (default: all of them), before runs whose files were deleted are left out.
 
   `server`: the QA-Board server, when the URL doesn't say (its address, or when it is served under a path prefix).
   Without a URL, the server is the one `qa` uses (QABOARD_URL...). `token`: an API token, else the one `qa` is
