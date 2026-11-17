@@ -7,16 +7,13 @@ import { lazy, useEffect } from "react";
 import { history } from "../router";
 import { useProjectData, useSelected } from "../hooks";
 import EmptyLoading from "../components/EmptyLoading";
-import { runs_path } from "./state";
+import { project_home, runs_path } from "./state";
 
 const CiCommitList = lazy(() => import("../CiCommitList"));
 
 const decoded = path => {
   try { return decodeURIComponent(path); } catch { return path; }
 };
-
-// "runs" or "commits"
-export const project_home = project_data => project_data?.data?.qatools_config?.project?.home === 'runs' ? 'runs' : 'commits';
 
 const ToRuns = ({ project }) => {
   useEffect(() => {

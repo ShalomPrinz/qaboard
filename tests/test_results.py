@@ -601,14 +601,14 @@ class TestRunsAcrossCommits(unittest.TestCase):
       found = runs(project='kitefin/detector', experiment='backbone/lr-sweep/', since=7, status='running')
     params = get.call_args.kwargs['params']
     self.assertEqual(get.call_args.args[1], 'http://qaboard:5151/api/v1/runs')
-    self.assertEqual(params, {'project': 'kitefin/detector', 'experiment': 'backbone/lr-sweep', 'since_days': 7, 'status': 'running', 'limit': 500, 'offset': 0})
+    self.assertEqual(params, {'project': 'kitefin/detector', 'experiment': 'backbone/lr-sweep', 'since_days': 7, 'status': 'running', 'origin': 'webapp,local', 'limit': 500, 'offset': 0})
     # deleted runs are left out, like for a commit's
     self.assertEqual([r.id for r in found], [11, 12])
     run = found[0]
     self.assertEqual((run.commit, run.batch, run.experiment), (f'{11:040d}', '@alice| backbone/lr-sweep', 'backbone/lr-sweep'))
     self.assertEqual(run.params, {'lr': 0.011})
 
-  def test_without_an_experiment_the_ci_is_left_out(self):
+  def test_the_ci_is_left_out_unless_asked(self):
     with mock_get([]) as get:
       runs(project='kitefin/detector', scope='mine', status=['running', 'failed'], filter='lr=0.01')
     params = get.call_args.kwargs['params']
@@ -672,6 +672,7 @@ class TestRunsPageUrl(unittest.TestCase):
     with mock_get(project_runs_page([11, 12, 14])) as get:
       found = runs(url)
     self.assertEqual(get.call_args.args[1], 'https://qaboard.example.com/api/v1/runs')
+    # ci=1: with the CI's runs
     self.assertEqual(get.call_args.kwargs['params'], {
       'project': 'kitefin/detector', 'experiment': 'backbone/lr-sweep', 'since_days': 7, 'scope': 'mine',
       'status': 'running,failed', 'q': 'lr=0.01', 'limit': 500, 'offset': 0,

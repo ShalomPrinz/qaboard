@@ -10,6 +10,9 @@ import { SeriesOptions, useSeriesOptions } from "./series/SeriesOptions";
 import { comparison_traces, run_labels, run_styles, series_counts, varying_params } from "./series/comparison";
 import { ComparisonPlot, series_query, useHighlight } from "./series/plots";
 import { started_from_code } from "./runView";
+import { Link } from "../router";
+import { runs_path } from "../runs/state";
+import { experiment_of } from "../runs/tree";
 
 // More lines than that can't be told apart, and each run is a request: people filter the runs
 export const MAX_RUNS = 40;
@@ -27,7 +30,8 @@ const toolbar_style = { display: 'flex', alignItems: 'center', gap: 14, flexWrap
 
 // - new_batch, ref_batch: the batches compared, with the runs the page's filters keep (.filtered.outputs)
 // - controls.series: the options shared with the runs' cards (smoothing, log scale, by step or time), in the URL
-const SeriesComparison = ({ new_batch, ref_batch, controls, onControlsChange, labels }) => {
+// - project: to link to the experiment's runs across commits (src/runs/)
+const SeriesComparison = ({ project, new_batch, ref_batch, controls, onControlsChange, labels }) => {
   const [options, setOptions, preview] = useSeriesOptions(controls?.series, onControlsChange);
   const [hidden, setHidden] = useState(() => new Set());
   // The run under the pointer, in the list: its lines come forward in every plot
@@ -117,6 +121,9 @@ const SeriesComparison = ({ new_batch, ref_batch, controls, onControlsChange, la
         {visible.length === runs.length ? `${runs.length} run${runs.length === 1 ? '' : 's'}` : `${visible.length} of ${runs.length} runs`}, {keys.length} series
       </span>
       {loading && <Spinner size={14} style={{ display: 'inline-block', marginLeft: 8 }} aria-label="Loading more runs"/>}
+      {project && new_batch?.label && <Link to={`${runs_path(project, experiment_of(new_batch.label))}${new_batch.origin === 'ci' || !new_batch.origin ? '?ci=1' : ''}`} style={{ fontSize: 12, fontWeight: 'normal', marginLeft: 12 }} title="Every run of this experiment, whatever its commit, on the Runs page">
+        All the runs of {experiment_of(new_batch.label)}, across commits →
+      </Link>}
     </h4>
     {candidates.length > MAX_RUNS && <Callout compact icon="info-sign" style={{ marginBottom: 8 }}>
       Showing the first {MAX_RUNS} of {candidates.length} runs. Filter the runs at the top of the page to compare others.

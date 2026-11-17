@@ -1,8 +1,9 @@
 // The Runs page's table: its columns, sorting, the best values, durations and links. Pure, tested in
-// __tests__/runsTable.test.js. Runs are outputs from GET /api/v1/runs, with their `batch` and `commit`.
+// __tests__/runs.test.js. Runs are outputs from GET /api/v1/runs, with their `batch` and `commit`.
 import { path_segment, stringify_query } from "../selection";
 import { run_labels, run_params } from "../viewers/series/comparison";
 import { sorted_keys } from "../viewers/series/series";
+import { value_text } from "./format";
 
 // Run statuses and bookkeeping, not metrics to show
 const NOT_METRICS = new Set(['is_failed', 'compute_time', 'params']);
@@ -78,7 +79,6 @@ export const best_values = (runs, keys, available_metrics) => {
 // The runs' names: what tells them apart (run_labels). A run that nothing tells apart, e.g. alone after a filter, is
 // named by its first parameters rather than its input: the name stays meaningful as the table changes.
 const SHOWN_PARAMS = 3;
-const value_text = value => typeof value === 'string' ? value : JSON.stringify(value);
 export const display_labels = runs => {
   const labels = run_labels(runs);
   for (const run of runs) {

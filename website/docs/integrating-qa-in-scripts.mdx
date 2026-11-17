@@ -69,7 +69,7 @@ the iterations of [automated tunings](/docs/auto-optimization), are left out unl
 window, whose runs or their status, without a commit.
 `qb.runs(project="kitefin/detector", experiment="detector/lr-sweep", since=7)` gives the runs of that experiment and of
 those under it, on any commit, the running first, then the latest; `scope="mine"`, `status="failed"`, `user=` and
-`filter=` narrow them. The Runs page's address works as a URL, and `qa runs --project <p> --experiment <e> --since 7`
+`filter=` narrow them. Like on the page, the CI's runs are left out unless you ask (`include_ci=True`). The Runs page's address works as a URL, and `qa runs --project <p> --experiment <e> --since 7`
 does the same from a shell. `run.experiment` is the run's experiment.
 
 Save it as *sharpness.py* and run `uv run sharpness.py`: the `# /// script` header says what to install, and `uv`

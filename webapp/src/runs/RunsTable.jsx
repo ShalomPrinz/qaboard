@@ -7,7 +7,6 @@
 // Clicking a row opens the run in a panel, with its visualizations (RunPanel.jsx).
 import { Fragment, useEffect, useState } from "react";
 import styled from "styled-components";
-import { DateTime } from "luxon";
 import { Button, Checkbox, Classes, HTMLTable, Icon, Intent, Tag, Tooltip } from "@blueprintjs/core";
 
 import { Link } from "../router";
@@ -17,6 +16,7 @@ import { run_params } from "../viewers/series/comparison";
 import { started_from_code } from "../viewers/runView";
 import { relative_experiment } from "./tree";
 import { commit_page_url, duration_seconds, format_duration, metric_direction, started } from "./table";
+import { absolute, relative, value_text } from "./format";
 
 
 const Table = styled(HTMLTable)`
@@ -45,9 +45,6 @@ const swatch = (style, shown) => ({
   opacity: shown ? 1 : 0.3,
 });
 
-const relative = date => date ? DateTime.fromISO(date, { zone: 'utc' }).toRelative({ style: 'short' }) : '';
-const absolute = date => date ? DateTime.fromISO(date, { zone: 'utc' }).toLocal().toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS) : '';
-const value_text = value => typeof value === 'string' ? value : JSON.stringify(value);
 
 const MetricValue = ({ value, info, best }) => {
   if (value === undefined || value === null) return <span className={Classes.TEXT_MUTED}>—</span>;
@@ -76,17 +73,24 @@ const MetricHeader = ({ metric, available_metrics }) => {
   </Tooltip>;
 };
 
-const Row = ({ run, project, label, node, style, plotted, hidden, selected, open, best, metrics, params, available_metrics, now, onOpen, onToggleHidden, onToggleSelected, onHover }) => {
+// How long a run ran, going on while it runs: only its own cell renders every second
+const Duration = ({ run }) => {
+  const now = useNow(run.is_running ? 1000 : null);
+  return <>
+    {run.is_running && <Tag minimal intent={Intent.PRIMARY} style={{ marginRight: 4 }}>live</Tag>}
+    {format_duration(duration_seconds(run, now))}
+  </>;
+};
+
+const Row = ({ run, project, label, node, style, plotted, hidden, selected, open, best, metrics, params, available_metrics, onOpen, onToggleHidden, onToggleSelected, onHover, onUser }) => {
   const run_param_values = run_params(run);
   const experiment = relative_experiment(run.batch?.experiment, node);
-  const duration = duration_seconds(run, now);
   const when = started(run);
   const dirty = run.data?.dirty;
   return <tr
     className={`qa-run${hidden ? ' qa-hidden' : ''}${open ? ' qa-open' : ''}`}
     tabIndex={0}
     aria-label={`${label}: open the run`}
-    aria-selected={selected}
     // links, buttons and checkboxes in the row do their own thing
     onClick={event => !event.target.closest('a, button, input, label, .qa-keep') && onOpen(run.id)}
     onKeyDown={event => {
@@ -98,6 +102,7 @@ const Row = ({ run, project, label, node, style, plotted, hidden, selected, open
     onMouseEnter={() => plotted && !hidden && onHover(run.id)}
     onMouseLeave={() => onHover(null)}
     onFocus={() => plotted && !hidden && onHover(run.id)}
+    onBlur={() => onHover(null)}
   >
     <td className="qa-keep" style={{ width: 28 }}>
       <Checkbox checked={selected} onChange={() => onToggleSelected(run.id)} aria-label={`Select ${label}`} style={{ margin: 0 }}/>
@@ -124,11 +129,17 @@ const Row = ({ run, project, label, node, style, plotted, hidden, selected, open
     {params.map(param => <td key={param} style={{ whiteSpace: 'nowrap' }}>
       {param in run_param_values ? value_text(run_param_values[param]) : <span className={Classes.TEXT_MUTED}>—</span>}
     </td>)}
-    <td style={{ whiteSpace: 'nowrap' }}>{run.batch?.user_name ?? <span className={Classes.TEXT_MUTED}>—</span>}{run.batch?.origin === 'ci' && <Tag minimal style={{ marginLeft: 4 }}>CI</Tag>}</td>
+    <td style={{ whiteSpace: 'nowrap' }}>
+      {run.batch?.user_name
+        ? <Tooltip content={`Only ${run.batch.user_name}'s runs`} hoverOpenDelay={500}>
+            <Button size="small" variant="minimal" text={run.batch.user_name} onClick={() => onUser(run.batch.user_name)} style={{ minHeight: 20, padding: '0 4px' }}/>
+          </Tooltip>
+        : <span className={Classes.TEXT_MUTED}>—</span>}
+      {run.batch?.origin === 'ci' && <Tag minimal style={{ marginLeft: 4 }}>CI</Tag>}
+    </td>
     <td style={{ whiteSpace: 'nowrap' }} title={absolute(when)}>{relative(when)}</td>
     <td className="qa-number" style={{ whiteSpace: 'nowrap' }}>
-      {run.is_running && <Tag minimal intent={Intent.PRIMARY} style={{ marginRight: 4 }}>live</Tag>}
-      {format_duration(duration)}
+      <Duration run={run}/>
     </td>
     <td style={{ whiteSpace: 'nowrap' }}>
       <Tooltip content={<span>
@@ -160,9 +171,6 @@ export const RunsTable = props => {
   const { runs, groups, group_by, labels, styles, plotted, hidden, selected, open_id, metrics, params, node, sort, onSort, onSetHidden, onSetSelected } = props;
   const all_selected = runs.length > 0 && runs.every(run => selected.includes(run.id));
   const some_selected = selected.length > 0 && !all_selected;
-  const live = runs.some(run => run.is_running);
-  // durations of running runs go on
-  const now = useNow(live ? 1000 : null);
   const row = run => <Row
     {...props}
     key={run.id}
@@ -173,7 +181,6 @@ export const RunsTable = props => {
     hidden={hidden.has(run.id)}
     selected={selected.includes(run.id)}
     open={open_id === run.id}
-    now={now}
   />;
   const columns = 8 + (node !== null ? 1 : 0) + params.length + metrics.length;
   return <div style={{ overflowX: 'auto' }}>
@@ -193,7 +200,7 @@ export const RunsTable = props => {
                 onClick={() => onSetHidden(hidden.size > 0 ? [] : [...plotted])} style={{ minWidth: 22, minHeight: 22, padding: 2 }}/>
             </Tooltip>
           </th>
-          <SortHeader column="status" sort={sort} onSort={onSort} title="Status">&nbsp;</SortHeader>
+          <SortHeader column="status" sort={sort} onSort={onSort} title="Status"><span className={Classes.TEXT_MUTED} aria-label="Status"/></SortHeader>
           <SortHeader column="name" sort={sort} onSort={onSort} title="Named by what tells the runs apart: input, configurations, parameters">Run</SortHeader>
           {node !== null && <SortHeader column="experiment" sort={sort} onSort={onSort}>Experiment</SortHeader>}
           {metrics.map(metric => <SortHeader key={metric} column={`metrics.${metric}`} sort={sort} onSort={onSort} className="qa-number">
@@ -214,7 +221,7 @@ export const RunsTable = props => {
                   <span style={{ ...swatch(group.style, true), marginRight: 8 }}/>
                   {group_by} = {group.value}
                   <span className={Classes.TEXT_MUTED} style={{ fontWeight: 'normal', marginLeft: 8 }}>{group.runs.length} run{group.runs.length === 1 ? '' : 's'}</span>
-                  <Button size="small" variant="minimal" style={{ marginLeft: 8 }} text="only these"
+                  <Button size="small" variant="minimal" style={{ marginLeft: 8 }} text="Only these"
                     onClick={() => onSetSelected(group.runs.map(run => run.id))}/>
                 </td>
               </tr>

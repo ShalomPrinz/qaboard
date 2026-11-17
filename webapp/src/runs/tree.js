@@ -1,6 +1,6 @@
 // Experiments as a tree, folded by the slashes of their names: "backbone/lr-sweep" is under "backbone".
 // Rows come from GET /api/v1/experiments: { experiment, runs, running, pending, failed, batches, latest, users }.
-// Pure, tested in __tests__/runsTree.test.js.
+// Pure, tested in __tests__/runs.test.js.
 
 const empty_totals = () => ({ runs: 0, running: 0, pending: 0, failed: 0, batches: 0, latest: null, users: new Set(), from_code: false });
 
@@ -14,6 +14,9 @@ const add = (totals, row) => {
   for (const user of row.users ?? []) totals.users.add(user);
   totals.from_code = totals.from_code || !!row.from_code;
 };
+
+// A batch's experiment: its label without the "@user| " of runs made outside the CI (backend/backend/runs_list.py)
+export const experiment_of = label => String(label ?? 'default').replace(/^@[^|]+\| /, '');
 
 // Only slashes fold: names with "|" or spaces show as they are. Empty parts ("a//b") are ignored.
 export const path_parts = experiment => String(experiment ?? '').split('/').filter(part => part !== '');

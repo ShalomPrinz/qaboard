@@ -3,11 +3,10 @@
 // as new and reference, whatever their commits. From there, the run's commit page has the rest.
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { DateTime } from "luxon";
-import { Button, Callout, Classes, Drawer, Icon, MenuItem, NonIdealState, Spinner, Tag, Tooltip } from "@blueprintjs/core";
+import { AnchorButton, Button, Callout, Classes, Drawer, Icon, MenuItem, NonIdealState, Spinner, Tag, Tooltip } from "@blueprintjs/core";
 import { Select } from "@blueprintjs/select";
 
-import { Link } from "../router";
+import { Link, history } from "../router";
 import { commitSummaryQuery } from "../api/queries";
 import { compute_config } from "../selectors/batches";
 import { controls_defaults } from "../viewers/controls";
@@ -17,8 +16,8 @@ import { SectionErrorBoundary } from "../components/ErrorFallback";
 import { copyLink } from "../utils/clipboard";
 import { side_color } from "../sideColors";
 import { commit_page_url, duration_seconds, format_duration, started } from "./table";
+import { absolute } from "./format";
 
-const absolute = date => date ? DateTime.fromISO(date, { zone: 'utc' }).toLocal().toLocaleString(DateTime.DATETIME_MED) : '';
 
 const renderRun = labels => (run, { handleClick, handleFocus, modifiers, ref }) => {
   if (!modifiers.matchesPredicate) return null;
@@ -80,13 +79,20 @@ export const RunPanel = ({ project, project_data, run, compare, runs, labels, on
     {run.is_running && <Tag minimal intent="primary">live</Tag>}
   </span>;
 
-  return <Drawer isOpen onClose={onClose} title={title} icon="lab-test" size="min(1180px, 82%)" position="right" hasBackdrop={false} canOutsideClickClose={false} style={{ overflow: 'auto' }}>
+  return <Drawer isOpen onClose={onClose} title={title} icon="lab-test" size="min(1180px, 82%)" position="right" hasBackdrop={false} canOutsideClickClose={false} canEscapeKeyClose={false} style={{ overflow: 'auto' }}>
     <div className={Classes.DRAWER_BODY} style={{ padding: 16 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <CompareWith runs={runs} run={run} compare={compare} labels={labels} onCompare={onCompare}/>
-        <Link to={commit_page_url(project, run, compare)}>
-          <Button icon="git-commit" text="Open on the commit page" title="The run on its commit's page: every view, the reference bar, the batch's other runs"/>
-        </Link>
+        {/* a link: it opens in a new tab too */}
+        <AnchorButton
+          icon="git-commit" text="Open on the commit page" title="The run on its commit's page: every view, the reference bar, the batch's other runs"
+          href={commit_page_url(project, run, compare)}
+          onClick={event => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+            event.preventDefault();
+            history.push(commit_page_url(project, run, compare));
+          }}
+        />
         <Tooltip content="Copy a link to this run, open in this page">
           <Button variant="minimal" icon="link" aria-label="Copy a link to this run" onClick={() => copyLink({ url: link, text: labels?.[run.id] ?? `run ${run.id}` }, { what: 'the link to the run' })}/>
         </Tooltip>
@@ -102,7 +108,7 @@ export const RunPanel = ({ project, project_data, run, compare, runs, labels, on
             <Tag minimal intent="warning" icon="warning-sign" style={{ marginLeft: 6 }}>changes not committed</Tag>
           </Tooltip>}
         </dd>
-        <dt className={Classes.TEXT_MUTED}>Who, when</dt>
+        <dt className={Classes.TEXT_MUTED}>Run by</dt>
         <dd style={{ margin: 0 }}>{run.batch?.user_name ?? '—'}, {absolute(started(run))}{duration !== null && <>, {run.is_running ? 'running for' : 'ran'} {format_duration(duration)}</>}</dd>
         {run.data?.sdk?.script && <><dt className={Classes.TEXT_MUTED}>Script</dt><dd style={{ margin: 0 }}><code>{run.data.sdk.script}</code></dd></>}
       </dl>
@@ -127,7 +133,7 @@ export const RunPanel = ({ project, project_data, run, compare, runs, labels, on
         />
       </SectionErrorBoundary>}
       <p className={Classes.TEXT_MUTED} style={{ marginTop: 12, fontSize: 12 }}>
-        <Icon icon="info-sign" size={12}/> <kbd className={Classes.KEY}>Esc</kbd> closes the run. Its logs, files and attempts are on <Link to={commit_page_url(project, run)}>its commit's page</Link>.
+        <Icon icon="info-sign" size={12}/> <kbd className={Classes.KEY}>Esc</kbd> closes the run, Back too. Its logs, files and attempts are on <Link to={commit_page_url(project, run)}>its commit's page</Link>.
       </p>
     </div>
   </Drawer>;

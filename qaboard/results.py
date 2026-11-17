@@ -589,8 +589,8 @@ def _project_runs(project: str, *, experiment: Optional[str], since: Any, scope:
     params['status'] = ','.join(statuses)
   if filter:
     params['q'] = filter
-  # like the Runs page: the CI's runs are left out unless we look at an experiment, which may be the CI's
-  if not (include_ci if include_ci is not None else bool(experiment)):
+  # like the Runs page: the CI's runs are left out unless asked
+  if not include_ci:
     params['origin'] = 'webapp,local'
   rows: List[Dict[str, Any]] = []
   seen: set = set()
@@ -641,8 +641,8 @@ def runs(url: Optional[str] = None, *, project: Optional[str] = None, commit: Op
   `status=`, without a commit or a URL. `runs(project='group/repo', experiment='backbone/lr-sweep', since=7)`: the runs
   of that experiment and of those under it, whoever ran them, on any commit, the running first, then the latest.
   `since`: days, a timedelta or a date (default: 30 days). `scope`: "mine", "others" or "all". `status`: "running",
-  "pending", "failed", "finished", or several. `include_ci`: the CI's runs too (by default, only when `experiment` is
-  given). `filter` is the web app's filter: it looks at the 5000 latest runs of the selection, and warns when there were
+  "pending", "failed", "finished", or several. `include_ci=True`: the CI's runs too, left out by default like on
+  the page. `filter` is the web app's filter: it looks at the 5000 latest runs of the selection, and warns when there were
   more. `limit`: at most this many runs (default: all of them), before runs whose files were deleted are left out.
 
   `server`: the QA-Board server, when the URL doesn't say (its address, or when it is served under a path prefix).

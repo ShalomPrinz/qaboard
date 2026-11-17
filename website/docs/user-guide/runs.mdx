@@ -9,7 +9,7 @@ are, which run of a sweep is the best and what it used, how today's run compares
 [creates runs](/docs/log-from-code) (a training loop, a notebook) have it in the sidebar, under **History**.
 
 :::caution Experimental
-The Runs page is new, like `qaboard.start_run()`. Tell us what you look for first.
+The Runs page is new, like `qaboard.start_run()`: its layout, its columns and the options in its address may change.
 :::
 
 ## Find your experiment {#experiments}
@@ -24,22 +24,23 @@ experiment under it**; **All runs** shows everything.
   to share exactly what you see.
 - **The time window** (*Last 30 days* by default) keeps the page fast on big projects: pick a longer one to find
   older experiments.
-- **The CI's runs are hidden**: experiments are what people run. Turn off **Hide the CI** to see them too.
+- **The CI's runs are hidden**: experiments are what people run. Turn off **Hide the CI** to see them too, over at
+  most 90 days.
 
 Name experiments `<area>/<question>`, like `backbone/lr-sweep` or `quantization/int8-calibration`, with seeds and
 trials in the configurations, not in the name: see [name your experiments](/docs/log-from-code#experiments).
 
 ## See how the trainings went {#plots}
 Above the table, **Logged series** plots what each run logged as it ran (`run.log()`), one line per run in the color
-of its row, one plot per series: the validation metrics first, then the training ones, the system's last. Everything
-the **Logged series** of a batch's Summary does works here: smoothing, log scale, by step or by time, filter the series.
+of its row, one plot per series: the validation metrics first, then the training ones, the system's last. As in a
+batch's Summary, smooth the curves, switch to a log scale, plot by step or by time, and filter the series by name.
 
 The table drives the plots:
 - **Hover a row** and its curves come forward in every plot, the others fade.
-- **The eye** <kbd>h</kbd> hides a run from the plots, and grays out its row. The eye in the header shows or hides
-  them all.
-- **Tick rows** <kbd>Space</kbd> to plot only them. Their best values are those in bold. **Plot every run shown**
-  brings back the others.
+- **The eye** hides a run from the plots, and grays out its row (<kbd>h</kbd> on the focused row). The eye in the
+  header shows or hides them all.
+- **Tick rows** to plot only them (<kbd>Space</kbd> on the focused row). Their best values are those in bold.
+  **Plot every run shown** brings back the others.
 
 **Group by** a parameter (e.g. `lr`) gives each of its values a color, and splits the table in groups. Pick
 **Mean and range** to draw each group as one line, the mean of its runs, with a band from the lowest to the highest:
@@ -62,7 +63,7 @@ One row per run, the running first, then the latest:
 | Experiment | Its experiment under the level you opened, when it's a deeper one |
 | Metrics | The project's main metrics, else the validation metrics first. **Metrics** at the top right picks them |
 | Parameters | One column per parameter whose value differs between the runs |
-| Who, Started, Duration | Who ran it, when, how long it ran or has been running (**live**) |
+| Who, Started, Duration | Who ran it (click the name to see only their runs), when, how long it ran or has been running (**live**) |
 | Commit | Its commit, a link to its page. `*` when the code had changes that were not committed |
 
 - **Sort** by any column, e.g. a metric: the first click puts its best value first. Sorting orders the runs loaded.
@@ -75,11 +76,11 @@ One row per run, the running first, then the latest:
 
 ## Open a run, compare two {#open-a-run}
 **Click a row** to open the run on the right: its metrics, its curves, its visualizations and files with every
-viewer, as on its commit's page. <kbd>Esc</kbd> closes it.
+viewer, as on its commit's page. <kbd>Esc</kbd> or the browser's Back closes it.
 
 - **Compare with…** picks another run of the table as the reference: its curves are dashed, its images next to the
   run's, its metrics' changes in percent. Any two runs, whatever their commits and experiments.
-- **Tick two rows** and click **Compare the 2 selected** for the same.
+- **Tick two rows** and click **Compare the 2 selected** for the same: the second you ticked is the reference.
 - **Open on the commit page** goes to the run's commit, filtered to the run (and compared with the other run): its
   logs, its attempts, the batch's other views.
 
@@ -105,7 +106,8 @@ project:
   home: runs
 ```
 
-**Runs** then comes first in the sidebar, and the project's page opens on it. **All commits** is still there.
+**Runs** then comes first in the sidebar, and the project's page opens on it. The commits list is still one click
+away, under it.
 
 ## What it doesn't do yet {#limits}
 - **Delete an experiment's files** from its level: delete batches from their commit's page, or with the

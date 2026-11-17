@@ -2,13 +2,13 @@
 // and everything under it. Each level says how many runs it has, how many run or failed, and when it last ran.
 import { useState } from "react";
 import styled from "styled-components";
-import { DateTime } from "luxon";
 import { Button, Classes, Icon, InputGroup, Menu, MenuItem, Popover, Spinner, Tooltip } from "@blueprintjs/core";
 
 import { Link } from "../router";
 import { copyLink, copyWithToast } from "../utils/clipboard";
 import { ancestors, path_parts } from "./tree";
 import { runs_path } from "./state";
+import { relative } from "./format";
 
 
 const Nav = styled.nav`
@@ -40,7 +40,6 @@ const Nav = styled.nav`
   .qa-tree-toggle { flex: none; width: 20px; display: inline-flex; justify-content: center; cursor: pointer; background: none; border: none; color: inherit; padding: 0; }
 `;
 
-const relative = date => date ? DateTime.fromISO(date, { zone: 'utc' }).toRelative({ style: 'short' }) : null;
 
 // "12 runs · 2 running · 1 failed · last 3h ago"
 export const describe = totals => [
@@ -84,10 +83,10 @@ const Node = ({ project, node, depth, selected, open, toggle, search, search_par
   const active = node.path === selected;
   // the names of merged levels are paths themselves: "detector/backbone"
   const parts = node.name.split('/');
-  return <li role="treeitem" aria-expanded={has_children ? is_open : undefined} aria-selected={active}>
+  return <li>
     <div className={`qa-tree-row${active ? ' active' : ''}`} style={{ paddingLeft: depth * 14 }} title={`${node.path}\n${describe(node.totals)}`}>
       {has_children
-        ? <button type="button" className="qa-tree-toggle" aria-label={`${is_open ? 'Fold' : 'Unfold'} ${node.path}`} onClick={() => toggle(node.path)}>
+        ? <button type="button" className="qa-tree-toggle" aria-label={`${is_open ? 'Fold' : 'Unfold'} ${node.path}`} aria-expanded={is_open} onClick={() => toggle(node.path)}>
             <Icon icon={is_open ? 'chevron-down' : 'chevron-right'} size={12} className={Classes.TEXT_MUTED}/>
           </button>
         : <span className="qa-tree-toggle"/>}
@@ -98,7 +97,7 @@ const Node = ({ project, node, depth, selected, open, toggle, search, search_par
       <Counts totals={node.totals}/>
       <NodeMenu project={project} node={node} onPython={onPython}/>
     </div>
-    {has_children && is_open && <ul role="group" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+    {has_children && is_open && <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
       {node.children.map(child => <Node key={child.path} {...{ project, node: child, depth: depth + 1, selected, open, toggle, search, search_params, onPython }}/>)}
     </ul>}
   </li>;
@@ -115,10 +114,11 @@ const matching = (node, needle) => {
 export const ExperimentTree = ({ project, tree, selected, loading, has_more, onPython, search_params = '' }) => {
   // the levels people opened, and those that lead to the one selected
   const [open, setOpen] = useState(() => new Set(ancestors(tree, selected)));
-  // ...also once the tree is loaded: the address can point deep in it
-  const [opened_for, setOpenedFor] = useState({ selected, tree });
-  if (opened_for.selected !== selected || opened_for.tree !== tree) {
-    setOpenedFor({ selected, tree });
+  // ...also once the tree has it: the address can point deep in it. Not when the tree refreshes: people folded it.
+  const path_to_selected = ancestors(tree, selected).join('\n');
+  const [opened_for, setOpenedFor] = useState({ selected, path_to_selected });
+  if (opened_for.selected !== selected || (opened_for.path_to_selected === '' && path_to_selected !== '')) {
+    setOpenedFor({ selected, path_to_selected });
     setOpen(open => new Set([...open, ...ancestors(tree, selected)]));
   }
   const [search, setSearch] = useState('');
@@ -145,7 +145,7 @@ export const ExperimentTree = ({ project, tree, selected, loading, has_more, onP
       <Counts totals={tree.totals}/>
       <span style={{ width: 24 }}/>
     </div>
-    <ul role="tree" aria-label="Experiments" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+    <ul aria-label="Experiments" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
       {shown.children.map(node => <Node key={node.path} {...{ project, node, depth: 0, selected, open, toggle, search: needle, search_params, onPython }}/>)}
     </ul>
     {needle && shown.children.length === 0 && <p className={Classes.TEXT_MUTED} style={{ padding: '6px 4px' }}>No experiment matches “{search}”.</p>}

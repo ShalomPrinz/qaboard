@@ -5,7 +5,7 @@
 // /<project>/runs/<experiment>: on the left the experiments as a tree, on the right the runs of the level selected
 // and of everything under it: their logged series on the same plots, above a table that drives them. A run opens in
 // a panel, with the card of its commit's page. Everything is in the address (state.js): links restore the view.
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
@@ -13,7 +13,7 @@ import {
   Intent, NonIdealState, Popover, SegmentedControl, Spinner, Switch, Tag, Tooltip,
 } from "@blueprintjs/core";
 
-import { useRouter } from "../router";
+import { history, useRouter } from "../router";
 import { useProjectData, useSelected, useSiteConfig, useUser, useUrlText } from "../hooks";
 import { errorMessage } from "../api/http";
 import { usePageTitle, join_title, project_name } from "../pageTitle";
@@ -28,7 +28,8 @@ import { MAX_RUNS } from "../viewers/SeriesComparison";
 import { started_from_code } from "../viewers/runView";
 import { experimentsQuery, runsPagesQuery, runs_of } from "./api";
 import { build_tree, find_node, path_parts } from "./tree";
-import { WINDOWS, runs_path, runs_state, updateRuns } from "./state";
+import { WINDOWS, has_runs_page, level_search, runs_path, runs_state, updateRuns } from "./state";
+import { window_label } from "./format";
 import { MAX_PARAM_COLUMNS, best_values, display_labels, first_sort, group_runs, metric_columns, metric_keys, param_columns, python_snippet, sort_runs, start_snippet } from "./table";
 import { ExperimentTree, describe } from "./ExperimentTree";
 import { RunsTable } from "./RunsTable";
@@ -77,7 +78,8 @@ const Page = styled.div`
   }
 `;
 
-const window_label = days => days === 1 ? 'Last 24 hours' : days === 365 ? 'Last year' : `Last ${days} days`;
+// With the CI's runs, the server answers for at most this many days
+const MAX_DAYS_WITH_CI = 90;
 
 // The quick filters on status: most of what people hide
 const STATUS_CHIPS = [
@@ -121,14 +123,15 @@ const ColumnsMenu = ({ keys, shown, onChange }) => {
 
 // When the page has nothing to show: say why, and how to get runs here
 const Empty = ({ state, experiment, docs_root, user, has_runs }) => {
+  const when = state.days === 1 ? 'in the last 24 hours' : state.days === 365 ? 'in the last year' : `in the last ${state.days} days`;
   const filtered = state.status.length > 0 || !!state.q || !!state.user;
   if (filtered)
     return <NonIdealState icon="filter" title="No run matches the filters"
       action={<Button icon="cross" text="Clear the filters" onClick={() => updateRuns({ status: [], q: '', user: '' })}/>}/>;
-  const wider = WINDOWS.find(days => days > state.days);
+  const wider = WINDOWS.find(days => days > state.days && (!state.ci || days <= MAX_DAYS_WITH_CI));
   return <NonIdealState
     icon="lab-test"
-    title={`No runs${experiment ? ` in ${experiment}` : ''} ${state.days === 1 ? 'in the last 24 hours' : state.days === 365 ? 'in the last year' : `in the last ${state.days} days`}${state.scope === 'mine' ? ' of yours' : ''}`}
+    title={`No runs${state.scope === 'mine' ? ' of yours' : ''}${experiment ? ` in ${experiment}` : ''} ${when}`}
     description={<div style={{ textAlign: 'left', maxWidth: 560 }}>
       {!has_runs && <p>Runs show here when your code creates them, e.g. a training loop. Each <code>run.log()</code> becomes a curve, next to the other runs of the experiment:</p>}
       {!has_runs && <Snippet code={start_snippet(experiment)} what="the code"/>}
@@ -140,7 +143,7 @@ const Empty = ({ state, experiment, docs_root, user, has_runs }) => {
     action={<span style={{ display: 'flex', gap: 8 }}>
       {wider && <Button icon="history" text={window_label(wider)} onClick={() => updateRuns({ days: wider })}/>}
       {state.scope === 'mine' && user.is_logged && <Button icon="people" text="Everyone's" onClick={() => updateRuns({ scope: 'all' })}/>}
-      {!state.ci && <Button icon="build" text="With the CI's runs" onClick={() => updateRuns({ ci: true })}/>}
+      {!state.ci && <Button icon="build" text="With the CI's runs" onClick={() => updateRuns({ ci: true, days: Math.min(state.days, MAX_DAYS_WITH_CI) })}/>}
     </span>}
   />;
 };
@@ -205,12 +208,14 @@ const RunsPage = () => {
   };
   const open_run = runs.find(run => run.id === state.run) ?? null;
   const compare_run = runs.find(run => run.id === state.compare) ?? null;
-  // two selected runs: compare them
-  const selected_runs = runs.filter(run => selected.includes(run.id));
+  // two selected runs: compare them, the first ticked with the second
+  const selected_runs = selected.map(id => runs.find(run => run.id === id)).filter(Boolean);
+  // a run in the address that isn't in the runs loaded, e.g. a link to an older one
+  const missing_run = state.run !== null && runs_query.isSuccess && !open_run;
 
   const live = loaded.some(run => run.is_running);
   const node_totals = node?.totals ?? tree.totals;
-  const crumbs = [
+  const crumbs = experiment && [
     { text: 'All runs', href: runs_path(project), onClick: event => { event.preventDefault(); go_to(''); } },
     ...path_parts(experiment).map((part, index, parts) => ({
       text: part,
@@ -218,20 +223,47 @@ const RunsPage = () => {
       onClick: event => { event.preventDefault(); go_to(parts.slice(0, index + 1).join('/')); },
     })),
   ];
-  // another level keeps the filters, not what was selected in this one
+  // another level keeps the filters, not what was opened or selected in this one
+  const tree_search = level_search(location);
   function go_to(path) {
-    updateRuns({ experiment: path, run: null, compare: null, selected: [], hidden: [] }, { replace: false, project });
+    history.push({ pathname: runs_path(project, path), search: tree_search });
   }
   const active_chip = STATUS_CHIPS.find(chip => same_list(chip.status, state.status));
-  // going to another level keeps the filters, not what was selected in this one
-  const tree_search = location.search.replace(/([?&])(run|compare|selected|hidden)=[^&]*/g, '$1').replace(/&&+/g, '&').replace(/[?&]$/, '').replace('?&', '?');
-  const has_runs = (experiments.data?.experiments ?? []).length > 0;
-  const error = runs_query.error ?? experiments.error;
+  // projects whose code never created runs get how to start, the others only what to widen
+  const has_runs = has_runs_page(project_data) || (experiments.data?.experiments ?? []).length > 0;
+
+  // The run's panel: opening it is a new entry in the history, closing it goes back (Back after closing would show
+  // the same page). Esc closes it wherever the focus is: the panel has no backdrop, people click the table behind it.
+  const opened_here = useRef(false);
+  const open = id => {
+    opened_here.current = state.run === null || opened_here.current;
+    updateRuns({ run: id, compare: null }, { replace: state.run !== null });
+  };
+  const close = () => {
+    if (opened_here.current) {
+      opened_here.current = false;
+      history.back();
+    } else updateRuns({ run: null, compare: null });
+  };
+  const close_ref = useRef(close);
+  useEffect(() => { close_ref.current = close; });
+  const has_open_run = state.run !== null;
+  useEffect(() => {
+    if (!has_open_run) return;
+    const onKeyDown = event => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      // dialogs and popovers on top close first
+      if (document.querySelector('.bp6-overlay-open .bp6-dialog, .bp6-popover-content')) return;
+      close_ref.current();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [has_open_run]);
 
   return <Page>
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
       <h2 className={Classes.HEADING} style={{ margin: 0, fontSize: 22 }}>Runs</h2>
-      <Breadcrumbs items={crumbs} minVisibleItems={2}/>
+      {crumbs && <Breadcrumbs items={crumbs} minVisibleItems={2}/>}
       {live && <Tooltip content="Some runs run now: the page follows them">
         <Tag minimal intent={Intent.PRIMARY} icon={<Spinner size={10}/>}>Live</Tag>
       </Tooltip>}
@@ -243,7 +275,7 @@ const RunsPage = () => {
     <div className={Classes.TEXT_MUTED} style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       {experiment
         ? <>Runs of <strong>{experiment}</strong> and of the experiments under it, whatever their commit{node ? <>: {describe(node_totals)}</> : null}.</>
-        : <>Every run of the project, whatever its commit, by experiment: what <code>qaboard.start_run(experiment=…)</code> names, slashes making levels.</>}
+        : <>Every run of the project, whatever its commit, grouped by experiment. Open an experiment to see its runs and those under it.</>}
     </div>
 
     <div className="qa-toolbar">
@@ -257,11 +289,15 @@ const RunsPage = () => {
         value={state.scope}
         onValueChange={scope => updateRuns({ scope }, { replace: false })}
       />}
+      {state.user && <Tag large minimal icon="person" onRemove={() => updateRuns({ user: '' }, { replace: false })} title="Only this person's runs">Runs of {state.user}</Tag>}
       <HTMLSelect
         aria-label="Time window"
         value={WINDOWS.includes(state.days) ? state.days : ''}
         onChange={e => updateRuns({ days: Number(e.target.value) }, { replace: false })}
-        options={[...(WINDOWS.includes(state.days) ? [] : [{ value: '', label: window_label(state.days) }]), ...WINDOWS.map(days => ({ value: days, label: window_label(days) }))]}
+        options={[
+          ...(WINDOWS.includes(state.days) ? [] : [{ value: '', label: window_label(state.days) }]),
+          ...WINDOWS.map(days => ({ value: days, label: window_label(days), disabled: state.ci && days > MAX_DAYS_WITH_CI })),
+        ]}
       />
       <span style={{ display: 'flex', gap: 4 }} role="group" aria-label="Quick filters">
         {STATUS_CHIPS.map(chip => <Button
@@ -272,14 +308,8 @@ const RunsPage = () => {
         />)}
       </span>
       <Tooltip content="Leave out the runs sent by CI pipelines: experiments are what people run, from their terminal, a notebook or the web app." placement="bottom" openOnTargetFocus={false}>
-        <Switch label="Hide the CI" checked={!state.ci} onChange={e => updateRuns({ ci: !e.target.checked }, { replace: false })}/>
+        <Switch label="Hide the CI" checked={!state.ci} onChange={e => updateRuns({ ci: !e.target.checked, days: e.target.checked ? state.days : Math.min(state.days, MAX_DAYS_WITH_CI) }, { replace: false })}/>
       </Tooltip>
-      <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-        {selected_runs.length === 2 && <Tooltip content="Open the first with the second as its reference: every viewer, side by side">
-          <Button icon="comparison" intent={Intent.PRIMARY} text="Compare the 2 selected" onClick={() => updateRuns({ run: selected_runs[0].id, compare: selected_runs[1].id }, { replace: false })}/>
-        </Tooltip>}
-        <ColumnsMenu keys={all_metric_keys} shown={metrics} onChange={chosen => updateRuns({ metrics: chosen })}/>
-      </span>
     </div>
 
     <div className="qa-runs-layout">
@@ -296,11 +326,17 @@ const RunsPage = () => {
         />
       </Card>
       <div style={{ minWidth: 0 }}>
-        {error && <Callout intent={Intent.DANGER} icon="error" title="Could not load the runs" style={{ marginBottom: 12 }}>
-          <code>{errorMessage(error)}</code>
-          {error.response?.status === 404 && <p>The server may be older than the web app: ask your admins to update it.</p>}
+        {[[experiments, 'the experiments'], [runs_query, 'the runs']].filter(([query]) => query.error).map(([query, what]) => <Callout key={what} intent={Intent.DANGER} icon="error" title={`Could not load ${what}`} style={{ marginBottom: 12 }}>
+          <p><code>{errorMessage(query.error)}</code></p>
+          {query.error.response?.status === 404 && <p>The server may be older than the web app: ask your admins to update it.</p>}
+          <Button icon="refresh" text="Retry" onClick={() => query.refetch()}/>
+        </Callout>)}
+        {missing_run && <Callout icon="search" style={{ marginBottom: 12 }} title={`Run ${state.run} isn't in this view`}>
+          <p>It may be older than the time window, in another experiment, or filtered out.</p>
+          <Button text="Close" onClick={() => updateRuns({ run: null, compare: null })}/>
         </Callout>}
-        {plot_runs.length > 0 && <SectionErrorBoundary title="The plots failed">
+        <div aria-busy={runs_query.isPlaceholderData} style={{ opacity: runs_query.isPlaceholderData ? 0.6 : 1, transition: 'opacity 150ms' }}>
+        {plottable.length > 0 && <SectionErrorBoundary title="The plots failed">
           <Suspense fallback={<Card compact style={{ marginBottom: 12, height: 80 }}><Spinner size={16}/></Card>}>
             <RunsPlots
               runs={plot_runs}
@@ -318,10 +354,20 @@ const RunsPage = () => {
               main_metrics={metrics_config.main_metrics}
               selected_count={selected.length}
               onClearSelection={() => updateRuns({ selected: [] })}
+              onShowAll={() => updateRuns({ hidden: [] })}
             />
           </Suspense>
         </SectionErrorBoundary>}
         <Card compact style={{ padding: 0 }}>
+          {runs.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--qa-border)', flexWrap: 'wrap' }}>
+            <span className={Classes.TEXT_MUTED}>{runs.length}{runs_query.hasNextPage ? '+' : ''} run{runs.length === 1 ? '' : 's'}{selected.length > 0 ? `, ${selected.length} selected` : ''}</span>
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              {selected_runs.length === 2 && <Tooltip content={<span>Open <strong>{labels[selected_runs[0].id]}</strong> with <strong>{labels[selected_runs[1].id]}</strong>, ticked second, as its reference</span>}>
+                <Button icon="comparison" intent={Intent.PRIMARY} text="Compare the 2 selected" onClick={() => { opened_here.current = true; updateRuns({ run: selected_runs[0].id, compare: selected_runs[1].id }, { replace: false }); }}/>
+              </Tooltip>}
+              <ColumnsMenu keys={all_metric_keys} shown={metrics} onChange={chosen => updateRuns({ metrics: chosen })}/>
+            </span>
+          </div>}
           {runs_query.isPending && <NonIdealState icon={<Spinner/>} title="Loading the runs…"/>}
           {runs_query.isSuccess && runs.length === 0 && <Empty state={state} experiment={experiment} docs_root={docs_root} user={user} has_runs={has_runs}/>}
           {runs.length > 0 && <RunsTable
@@ -342,7 +388,8 @@ const RunsPage = () => {
             project={project}
             sort={state.sort}
             onSort={key => updateRuns({ sort: state.sort?.key === key ? (state.sort.desc === first_sort(key, available_metrics).desc ? { key, desc: !state.sort.desc } : null) : first_sort(key, available_metrics) })}
-            onOpen={id => updateRuns({ run: id, compare: null }, { replace: state.run !== null })}
+            onOpen={open}
+            onUser={name => updateRuns({ user: name }, { replace: false })}
             onToggleHidden={id => toggle_in('hidden', id)}
             onToggleSelected={id => toggle_in('selected', id)}
             onSetHidden={ids => updateRuns({ hidden: ids })}
@@ -350,6 +397,7 @@ const RunsPage = () => {
             onHover={onHover}
           />}
         </Card>
+        </div>
         {runs_query.hasNextPage && !runs_query.error && <LoadMore
           onLoadMore={() => !runs_query.isFetchingNextPage && runs_query.fetchNextPage()}
           loading={runs_query.isFetchingNextPage}
@@ -360,7 +408,7 @@ const RunsPage = () => {
           <Icon icon="info-sign" size={12}/> The filter looked at the {scanned} latest runs. Open an experiment or shorten the time window to search older ones.
         </p>}
         {runs.length > 0 && <p className={Classes.TEXT_MUTED} style={{ marginTop: 8, fontSize: 12 }}>
-          Click a run to open it. <kbd className={Classes.KEY}>Space</kbd> selects the focused row, <kbd className={Classes.KEY}>h</kbd> hides it from the plots. Sorting orders the runs loaded.
+          Click a run to open it. On the focused row, <kbd className={Classes.KEY}>Space</kbd> selects it and <kbd className={Classes.KEY}>h</kbd> hides it from the plots. Sorting orders the runs loaded.
         </p>}
       </div>
     </div>
@@ -373,7 +421,7 @@ const RunsPage = () => {
         compare={compare_run}
         runs={runs}
         labels={labels}
-        onClose={() => updateRuns({ run: null, compare: null })}
+        onClose={close}
         onCompare={id => updateRuns({ compare: id })}
       />
     </Suspense>}

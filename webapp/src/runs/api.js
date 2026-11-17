@@ -50,7 +50,8 @@ export const runsPagesQuery = ({ project, experiment, state }) => {
       };
     },
     initialPageParam: 0,
-    getNextPageParam: (last_page, pages, last_offset) => last_page.has_more ? last_offset + last_page.runs.length : undefined,
+    // a page without runs never says there are more: asking again would get the same
+    getNextPageParam: (last_page, pages, last_offset) => last_page.has_more && last_page.runs.length > 0 ? last_offset + last_page.runs.length : undefined,
     enabled: !!project,
     staleTime: 15 * 1000,
     // the table stays while another node or filter loads

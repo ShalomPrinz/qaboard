@@ -4,7 +4,7 @@
 // (qaboard/results.py _runs_page): keep them in sync.
 import { history } from "../router";
 import { parse_query, path_segment, stringify_query } from "../selection";
-import { default_options } from "../viewers/series/SeriesOptions";
+import { default_options } from "../viewers/series/series";
 
 // The time windows offered, in days. Any number in the URL works.
 export const WINDOWS = [1, 7, 30, 90, 365];
@@ -48,7 +48,8 @@ export const runs_state = search => {
     sort: sort ? { key: sort.replace(/^-/, ''), desc: sort.startsWith('-') } : null,
     // the run open in the panel, and the run it is compared with
     run: ids(query.run)[0] ?? null,
-    compare: ids(query.compare)[0] ?? null,
+    // not ?compare=: the commit page reads it as more references
+    compare: ids(query.vs)[0] ?? null,
     series: {
       smoothing: Number.isFinite(smoothing) && smoothing >= 0 && smoothing < 1 ? smoothing : default_options.smoothing,
       log: query.log === '1',
@@ -80,6 +81,8 @@ const as_query = changes => {
       query.scope = value === 'mine' ? 'mine' : undefined;
     } else if (key === 'days') {
       query.days = value && value !== DEFAULT_DAYS ? String(value) : undefined;
+    } else if (key === 'compare') {
+      query.vs = value ? String(value) : undefined;
     } else if (key === 'lines') {
       query.lines = value === 'mean' ? 'mean' : undefined;
     } else {
@@ -108,12 +111,10 @@ export const updateRuns = (changes, { replace = true, project } = {}) => {
   (replace ? history.replace : history.push)(url);
 };
 
-// The node an address shows: what is after /runs/, without the project
-export const experiment_of_path = (pathname, project) => {
-  const prefix = `/${project}/runs`;
-  const decoded = (() => {
-    try { return decodeURIComponent(pathname); } catch { return pathname; }
-  })();
-  if (!decoded.startsWith(prefix)) return '';
-  return decoded.slice(prefix.length).split('/').filter(Boolean).join('/');
-};
+// What a level's links keep: the filters and the view, not what was opened or selected in the current level
+export const level_search = location => runs_url(location, { run: null, compare: null, selected: [], hidden: [] }).search;
+
+// The project's code creates runs (the server says so), or the project says it trains: the page is in the sidebar
+// and the command palette
+export const project_home = project_data => project_data?.data?.qatools_config?.project?.home === 'runs' ? 'runs' : 'commits';
+export const has_runs_page = project_data => !!project_data?.data?.has_runs_from_code || project_home(project_data) === 'runs';

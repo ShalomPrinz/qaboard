@@ -13,6 +13,7 @@ import { http } from "../api/http";
 import { matchRoutes } from "../router";
 import { app_paths, project_routes } from "../route_paths";
 import { useProjectData, useProjects, useSiteConfig, useUser } from "../hooks";
+import { has_runs_page } from "../runs/state";
 import { usePrefsStore } from "../stores/prefs";
 import { useIsDark } from "../theme";
 import { is_typing, useHelpSheet } from "../components/HelpSheet";
@@ -206,7 +207,7 @@ const PaletteContent = ({ onClose, typing }) => {
 
   // the project's own pages too, e.g. its runs
   const project_data = useProjectData(project);
-  const has_runs = !!project_data.data?.has_runs_from_code;
+  const has_runs = has_runs_page(project_data);
   const pages = useMemo(() => app_items({ user, docs_root, is_dark, project, has_runs }), [user, docs_root, is_dark, project, has_runs]);
   const sections = useMemo(() => group_sections([
     ...rank_commits(project, commits.data, trimmed),

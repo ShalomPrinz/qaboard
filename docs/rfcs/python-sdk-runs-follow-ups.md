@@ -166,9 +166,9 @@ User docs: `website/docs/user-guide/runs.mdx`.
   the project and a window (30 days by default): they never scan a project's runs. The text filter is the web app's,
   in Python, over at most the 5000 latest runs of the selection (`X-Scanned` says when it stopped). Not measured on a
   production copy yet: do it before making the page a default for big projects.
-- **Which projects get the page**: the server marks a batch `data.sdk` when it gets a run started from code, with a
-  partial index (`ix_batches_sdk`, migration `c4e6a8b0d2f3`, which also marks the batches of the runs since October).
-  `GET /api/v1/project` says `has_runs_from_code`: the sidebar shows **Runs** under **History**. Open question 1:
+- **Which projects get the page**: the server marks a batch (`data.sdk`) and its project (`data.has_runs_from_code`)
+  when it gets a run started from code; the migration `c4e6a8b0d2f3` marks those of the runs since October. The
+  sidebar shows **Runs** under **History**. Open question 1:
   `project.home: runs` in *qaboard.yaml* puts it first and opens the project on it. No share-of-runs heuristic.
 - **Python**: `start_run(experiment=)`, `batch=` its alias; `qaboard.runs(project=, experiment=, since=, scope=,
   status=, user=, filter=)` and the Runs page's address in `qaboard.runs(url)` / `qa runs` (also `--experiment`,
@@ -181,8 +181,13 @@ User docs: `website/docs/user-guide/runs.mdx`.
   (`webapp/src/runs/state.js`, which `qaboard/results.py` reads too).
 - **Decisions taken while building it**: the CI's runs are hidden by default (`?ci=1`); metrics and parameters come
   right after the run's name, before who/when/commit, since they are what people compare; sorting orders the runs
-  loaded (no server-side sort by a JSON metric: open question on scale); the route is `/<project>/runs/<experiment>`
-  with the project before the *last* `/runs/`, like the other routes (an experiment with a `runs` level misparses).
+  loaded (no server-side sort by a JSON metric: open question on scale); the route is `/<project>/runs/<experiment>`,
+  matched after the other project pages, with the project before the *last* `/runs/`: experiments can't have levels
+  named `commit`, `commits`, `committer`, `history`, `dashboard`, `milestone` or `runs`, and a project named
+  `.../runs` loses its own page to its parent's Runs page.
+- **Bounds, after a review**: offsets past 100000 are refused; with the CI's runs, at most 90 days; queries stop after
+  30 s (503, with what to narrow); the text filter reads the 5000 latest runs of the selection in one query. The
+  markers are written in SQL, once (`mark_runs_from_code`), not by rewriting rows.
 - **Not done**: deleting an experiment's files from its node (point 1), milestones that hold runs (point 6), a
   reference for training runs (open question 3), the shots (part B).
 

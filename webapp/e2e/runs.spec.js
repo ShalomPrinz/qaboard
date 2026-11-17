@@ -20,7 +20,7 @@ test('experiments as a tree, their runs across commits, the table driving the pl
   await page.goto(`/${project}/runs`);
   // the sidebar has the page, the tree every experiment
   await expect(page.getByRole('navigation', { name: 'Navigation' }).getByText('Runs', { exact: true })).toBeVisible();
-  const tree = page.getByRole('tree', { name: 'Experiments' });
+  const tree = page.getByRole('navigation', { name: 'Experiments' });
   await expect(tree.getByRole('link', { name: 'detector' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Runs' }).locator('tbody tr.qa-run')).toHaveCount(17);
 
@@ -51,7 +51,10 @@ test('experiments as a tree, their runs across commits, the table driving the pl
   await page.getByRole('button', { name: 'Compare the 2 selected' }).click();
   const panel = page.locator('.bp6-drawer');
   await expect(panel.getByText(/^Compared with/)).toBeVisible();
-  await expect(panel.getByRole('link', { name: 'Open on the commit page' })).toHaveAttribute('href', /reference=/);
+  await expect(panel.getByRole('button', { name: 'Open on the commit page' })).toHaveAttribute('href', /reference=/);
+  await expect(page).toHaveURL(/vs=/);
+  // Esc closes it even with the focus behind, and Back doesn't open it again
+  await page.getByRole('heading', { name: 'Runs', exact: true }).click({ force: true });
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
   await expect(page).not.toHaveURL(/run=/);
@@ -66,7 +69,7 @@ test('runs grouped by a parameter: the mean and range of each group', async ({ p
   await mockRunsApi(page);
   await page.goto(`/${project}/runs/detector/lr-sweep?group_by=lr&lines=mean`);
   const loss = plot(page, 'val/loss');
-  // five learning rates; three with several seeds have a band (two traces each)
+  // five learning rates; the two with several seeds have a band (two traces each)
   await expect(loss.locator('.scatterlayer .trace')).toHaveCount(5 + 2 * 2);
   await expect(page.locator('tr.qa-group')).toHaveCount(5);
   await page.getByRole('radio', { name: 'Each run' }).click();

@@ -37,7 +37,7 @@ const toolbar_style = { display: 'flex', alignItems: 'center', gap: 14, flexWrap
 // - runs: those to plot: [{ id, label, style, output }], at most MAX_PLOTTED
 // - plotted: how many runs are plotted, hidden or not, and total: how many could be, to say when some are left out
 // - groups: when grouped by a parameter, [{ value, label, style, ids }]
-export const RunsPlots = ({ runs, plotted, total, groups, group_by, params, lines, onState, options, setOptions, preview, register, main_metrics, selected_count, onClearSelection }) => {
+export const RunsPlots = ({ runs, plotted, total, groups, group_by, params, lines, onState, options, setOptions, preview, register, main_metrics, selected_count, onClearSelection, onShowAll }) => {
   const queries = useQueries({ queries: runs.map(run => series_query(run.output)) });
   const [filter, setFilter] = useState('');
   const [show_all, setShowAll] = useState(false);
@@ -55,7 +55,13 @@ export const RunsPlots = ({ runs, plotted, total, groups, group_by, params, line
   const as_bands = grouped && lines === 'mean';
   const no_hidden = new Set();
 
-  if (runs.length === 0) return null;
+  // every run is hidden: the card stays, with how to get them back
+  if (runs.length === 0)
+    return <Card compact style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }} data-testid="runs-plots">
+      <h4 className={Classes.HEADING} style={{ margin: 0 }}>Logged series</h4>
+      <span className={Classes.TEXT_MUTED}>Every run is hidden from the plots.</span>
+      <Button size="small" icon="eye-open" text="Show them" onClick={onShowAll}/>
+    </Card>;
   if (logged.length === 0)
     return loading
       ? <Card compact style={{ marginBottom: 12, minHeight: 80, display: 'flex', alignItems: 'center', gap: 8 }}><Spinner size={16}/><span className={Classes.TEXT_MUTED}>Loading what the runs logged…</span></Card>

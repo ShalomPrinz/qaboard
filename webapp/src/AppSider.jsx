@@ -27,8 +27,7 @@ import { useHelpSheet, is_typing } from "./components/HelpSheet"
 import { PaletteButton } from "./palette/CommandPalette"
 import { LogsMenuItem, logs_hint_class } from "./AppSiderLogsItem"
 import { project_admin_pages } from "./projectAdmin/ProjectAdminTabs"
-import { runs_path } from "./runs/state"
-import { project_home } from "./runs/ProjectHome"
+import { has_runs_page, project_home, runs_path } from "./runs/state"
 
 import { useCommitsList, useComparison, useProjects, useSiteConfig, useUser } from "./hooks"
 import { path_segments } from "./explore/tree"
@@ -626,7 +625,7 @@ const ProjectSideCommitList = ({ project, project_data = {}, commit = {}, ref_co
   // Runs across commits: for projects with runs started from code, first for those that train (project.home: runs)
   const is_runs = selected.route.is_runs;
   const runs_first = project_home(project_data) === 'runs';
-  const runs_item = (is_runs || runs_first || project_data.data?.has_runs_from_code) && <SiderHint name="Runs" content="Every run of the project, whatever its commit, by experiment: their curves on the same plots, the best, and each run opened in place.">
+  const runs_item = (is_runs || has_runs_page(project_data)) && <SiderHint name="Runs" content="Your experiments: every run of the project whatever its commit, their curves on the same plots, the best, each run opened in place. (Runs activity is what waits and runs on the servers now.)">
     <MenuItemLink to={runs_path(project)} active={is_runs} icon="lab-test" text="Runs"/>
   </SiderHint>;
   return <>

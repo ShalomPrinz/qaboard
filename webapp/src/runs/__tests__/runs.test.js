@@ -2,8 +2,8 @@
  * The Runs page's logic: its address, the experiments' tree, the table's columns, sorting and best values, and the
  * groups' mean and range. Run with: cd webapp && npm test -- runs
  */
-import { DEFAULT_DAYS, runs_path, runs_state, runs_url } from '../state';
-import { ancestors, build_tree, find_node, relative_experiment } from '../tree';
+import { DEFAULT_DAYS, has_runs_page, level_search, project_home, runs_path, runs_state, runs_url } from '../state';
+import { ancestors, build_tree, experiment_of, find_node, relative_experiment } from '../tree';
 import {
   best_values, by_interest, commit_page_url, display_labels, duration_seconds, first_sort, format_duration, group_runs, metric_columns,
   metric_direction, metric_keys, python_snippet, sort_runs,
@@ -19,7 +19,7 @@ describe('the address', () => {
   });
 
   it('reads and writes everything people choose', () => {
-    const search = '?scope=mine&days=7&status=running,pending&ci=1&q=lr%3D0.01&hidden=3,4&selected=5&group_by=lr&lines=mean&metrics=val/loss,val/mAP&sort=-metrics.val/mAP&run=5&compare=6&smoothing=0.6&log=1&x=time';
+    const search = '?scope=mine&days=7&status=running,pending&ci=1&q=lr%3D0.01&hidden=3,4&selected=5&group_by=lr&lines=mean&metrics=val/loss,val/mAP&sort=-metrics.val/mAP&run=5&vs=6&smoothing=0.6&log=1&x=time';
     const state = runs_state(search);
     expect(state).toMatchObject({
       scope: 'mine', days: 7, status: ['running', 'pending'], ci: true, q: 'lr=0.01', selected: [5], group_by: 'lr', lines: 'mean',
@@ -30,6 +30,23 @@ describe('the address', () => {
     // written back the same
     const { search: written } = runs_url({ pathname: '/a/runs', search: '' }, { ...state, hidden: state.hidden });
     expect(runs_state(written)).toEqual(state);
+  });
+
+  it("doesn't use the commit page's keys for what differs", () => {
+    // ?compare= is the commit page's other references
+    expect(runs_state('?compare=6').compare).toBe(null);
+    expect(runs_url({ pathname: '/p/runs', search: '' }, { compare: 6 }).search).toBe('?vs=6');
+  });
+
+  it('keeps the filters when going to another level, not what was opened or selected', () => {
+    expect(level_search({ pathname: '/p/runs/a', search: '?q=lr&run=4&vs=5&selected=1,2&hidden=3&days=7' })).toBe('?q=lr&days=7');
+  });
+
+  it('says which projects have the page', () => {
+    expect(has_runs_page({ data: { has_runs_from_code: true } })).toBe(true);
+    expect(has_runs_page({ data: { qatools_config: { project: { home: 'runs' } } } })).toBe(true);
+    expect(has_runs_page({ data: {} })).toBe(false);
+    expect(project_home({ data: { qatools_config: { project: { home: 'runs' } } } })).toBe('runs');
   });
 
   it('ignores what makes no sense', () => {
@@ -78,6 +95,11 @@ describe('the tree of experiments', () => {
     expect(relative_experiment('backbone/lr-sweep/warmup', 'backbone/lr-sweep')).toBe('warmup');
     expect(relative_experiment('backbone/lr-sweep', 'backbone/lr-sweep')).toBe('');
     expect(relative_experiment('backbone/lr-sweep', '')).toBe('backbone/lr-sweep');
+  });
+
+  it('names experiments like the server', () => {
+    expect(experiment_of('@alice| backbone/lr-sweep')).toBe('backbone/lr-sweep');
+    expect(experiment_of('nightly | v2')).toBe('nightly | v2');
   });
 
   it('only folds slashes', () => {
@@ -152,6 +174,8 @@ describe('the table', () => {
   it('writes the Python that reads the runs shown', () => {
     const code = python_snippet({ project: 'kitefin/detector', experiment: 'backbone/lr-sweep', state: runs_state('?scope=mine&days=7&status=failed&q=lr') });
     expect(code).toContain('qb.runs(project="kitefin/detector", experiment="backbone/lr-sweep", since=7, scope="mine", status="failed", filter="lr")');
+    // the CI's runs, only when the page shows them, like qaboard.runs()
+    expect(python_snippet({ project: 'p', experiment: '', state: runs_state('?ci=1') })).toContain('include_ci=True');
   });
 });
 
