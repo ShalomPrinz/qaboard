@@ -185,7 +185,7 @@ describe('OutputCardsList', () => {
       : new Response(JSON.stringify({ 'out.png': { md5: String(url) }, 'out.bin': { md5: '1' } }), { status: 200 }));
     const config = { outputs: { visualizations: [{ name: 'Image', path: 'out.png' }, { name: 'Other', path: 'out.bin', type: 'unknown/type' }] } };
     const runs = { 2000: make_output(2000), 3000: make_output(3000) };
-    const reference = (number, extra) => ({ key: `reference-${number}`, number, label: `ref ${number}`, color: side_color(number), loading: false, match: () => undefined, ...extra });
+    const reference = (number, extra) => ({ id: `proj/${number}/default/`, key: `reference-${number}`, number, label: `ref ${number}`, color: side_color(number), loading: false, match: () => undefined, ...extra });
     const together = [
       reference(2, { match: output => output?.id === 0 ? runs[2000] : undefined }),
       // its files can't be listed
@@ -203,10 +203,10 @@ describe('OutputCardsList', () => {
     await waitFor(() => expect(image_viewer_props.others[1].manifest).toEqual({}));
     const { others } = image_viewer_props;
     expect(others).toEqual([
-      { key: 'reference-2', number: 2, label: 'ref 2', color: together[0].color, output: runs[2000], manifest: { 'out.png': { md5: '/s/out/2000/manifest.outputs.json' }, 'out.bin': { md5: '1' } }, loading: false },
-      { key: 'reference-3', number: 3, label: 'ref 3', color: together[1].color, output: runs[3000], manifest: {}, loading: false },
-      { key: 'reference-4', number: 4, label: 'ref 4', color: together[2].color, output: undefined, manifest: undefined, loading: true },
-      { key: 'reference-5', number: 5, label: 'ref 5', color: together[3].color, output: undefined, manifest: undefined, loading: false },
+      { id: 'proj/2/default/', key: 'reference-2', number: 2, label: 'ref 2', color: together[0].color, output: runs[2000], manifest: { 'out.png': { md5: '/s/out/2000/manifest.outputs.json' }, 'out.bin': { md5: '1' } }, loading: false },
+      { id: 'proj/3/default/', key: 'reference-3', number: 3, label: 'ref 3', color: together[1].color, output: runs[3000], manifest: {}, loading: false },
+      { id: 'proj/4/default/', key: 'reference-4', number: 4, label: 'ref 4', color: together[2].color, output: undefined, manifest: undefined, loading: true },
+      { id: 'proj/5/default/', key: 'reference-5', number: 5, label: 'ref 5', color: together[3].color, output: undefined, manifest: undefined, loading: false },
     ]);
     // the other viewers compare with the reference only
     expect(await screen.findByText(/No viewer for the type/)).toBeInTheDocument();

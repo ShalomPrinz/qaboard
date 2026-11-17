@@ -8,6 +8,7 @@ import { ComparisonProvider, useComparison } from '../hooks';
 import { history, matchRoutes, RouteMatch } from '../router';
 import { routes } from '../routes';
 import { makeQueryClient } from '../test-utils';
+import { usePrefsStore } from '../stores/prefs';
 
 const commit = (id, outputs = {}) => ({
   id, branch: 'master', message: `Commit ${id}`, authored_datetime: '2026-09-01T10:00:00Z',
@@ -72,11 +73,14 @@ describe('references shown together with the one compared', () => {
     render(<QueryClientProvider client={makeQueryClient()}><HistoryRouter history={history}><Page/></HistoryRouter></QueryClientProvider>);
   };
   const requests = () => fetch.mock.calls.map(([url]) => new URL(url, 'http://localhost')).filter(url => url.pathname.startsWith('/api/v1/commit/'));
+  // the preference is persisted: each test starts with the default
+  beforeEach(() => usePrefsStore.setState({ referencesTogether: true }));
 
-  test('those ticked come with their runs, and find the run that matches a new run', async () => {
-    open('compare[0][commit]=ccc111&compare[0][together]=1&compare[1]=ddd222');
-    // there as soon as they are ticked, before their runs
-    expect(comparison.together).toMatchObject([{ key: 'reference-2', index: 1, number: 2, label: 'ref 2', project: 'group/repo', loading: true }]);
+  test('by default they all are: they come with their runs, and find the run that matches a new run', async () => {
+    open('compare[0]=ccc111&compare[1][commit]=ddd222&compare[1][together]=0');
+    expect(comparison.together_mode).toBe('all');
+    // there at once, before their runs
+    expect(comparison.together).toMatchObject([{ id: 'group/repo/ccc111/default/', key: 'reference-2', index: 1, number: 2, label: 'ref 2', project: 'group/repo', loading: true }]);
     expect(comparison.together[0].match(comparison.new_batch.outputs[1])).toBeUndefined();
     await waitFor(() => expect(comparison.together[0].loading).toBe(false));
     await waitFor(() => expect(comparison.new_batch.outputs[1]?.reference_id).toBe(5));
@@ -90,20 +94,23 @@ describe('references shown together with the one compared', () => {
     expect(entry.match(output_new)).toBe(entry.match(output_new));
     expect(entry.match({ id: 99, test_input_path: 'z', configurations: [] })).toBeUndefined();
     expect(entry.match(undefined)).toBeUndefined();
-    // the others keep what they had
-    expect(comparison.references.map(r => r.together)).toEqual([false, true, false]);
+    // the one compared is not shown together with itself, the one unticked isn't shown
+    expect(comparison.references.map(r => [r.id, r.ticked, r.together])).toEqual([
+      ['group/repo/fff000/default/', true, false], ['group/repo/ccc111/default/', true, true], ['group/repo/ddd222/default/', false, false],
+    ]);
     expect(comparison.compared.map(side => side.key)).toEqual(['new', 'reference']);
-    // only those ticked are fetched with their runs
+    // only those shown are fetched with their runs
     const with_outputs = id => requests().filter(url => url.pathname === `/api/v1/commit/${id}`).map(url => url.searchParams.get('with_outputs'));
     expect(with_outputs('ccc111')).toEqual([null]);
     expect(with_outputs('ddd222')).toEqual(['false']);
   });
 
   test('their filter is theirs, and the array is the same while nothing changes', async () => {
-    open('compare[0][commit]=ccc111&compare[0][together]=1&compare[0][filter]=b');
+    open('compare[0][commit]=ccc111&compare[0][filter]=b');
     await waitFor(() => expect(comparison.together[0].loading).toBe(false));
     await waitFor(() => expect(comparison.new_batch.outputs[1]).toBeDefined());
     const { together } = comparison;
+    expect(together[0].id).toBe('group/repo/ccc111/default/b');
     expect(together[0].batch.filtered.outputs).toEqual(['8']);
     // a change elsewhere on the page
     act(() => history.replace(`${window.location.pathname}${window.location.search}&selected_views=logs`));
@@ -111,13 +118,39 @@ describe('references shown together with the one compared', () => {
     expect(comparison.together).toBe(together);
   });
 
-  test('without ticks there are none', async () => {
-    open('compare=ccc111');
+  test('one at a time: none, whatever is ticked', async () => {
+    open('compare=ccc111&together=0');
+    expect(comparison.together_mode).toBe('one');
     await waitFor(() => expect(comparison.references[1].commit?.id).toBe('ccc111'));
     const { together } = comparison;
     expect(together).toEqual([]);
+    expect(comparison.references.map(r => [r.ticked, r.together])).toEqual([[true, false], [true, false]]);
+    expect(requests().filter(url => url.pathname === '/api/v1/commit/ccc111').map(url => url.searchParams.get('with_outputs'))).toEqual(['false']);
     act(() => history.replace(`${window.location.pathname}${window.location.search}&ref_index=1`));
     await waitFor(() => expect(comparison.selected.ref_index).toBe(1));
     expect(comparison.together).toBe(together);
+  });
+
+  test('without a mode in the link: what users last chose, and the link wins', () => {
+    usePrefsStore.setState({ referencesTogether: false });
+    open('compare=ccc111');
+    expect(comparison.together_mode).toBe('one');
+    expect(comparison.together).toEqual([]);
+    act(() => usePrefsStore.setState({ referencesTogether: true }));
+    expect(comparison.together_mode).toBe('all');
+    expect(comparison.together).toHaveLength(1);
+    act(() => history.replace(`${window.location.pathname}${window.location.search}&together=0`));
+    expect(comparison.together_mode).toBe('one');
+  });
+
+  test('with one reference there is nothing to show together', () => {
+    open('together=1');
+    expect(comparison.together).toEqual([]);
+    expect(comparison.references.map(r => r.together)).toEqual([false]);
+  });
+
+  test('a copy of a reference has its own id', () => {
+    open('compare=fff000&compare=ccc111');
+    expect(comparison.references.map(r => r.id)).toEqual(['group/repo/fff000/default/', 'group/repo/fff000/default/#2', 'group/repo/ccc111/default/']);
   });
 });

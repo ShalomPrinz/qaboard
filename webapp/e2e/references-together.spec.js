@@ -55,7 +55,7 @@ test.beforeEach(async ({ page }) => {
     const id = url.pathname.match(/^\/api\/v1\/commit\/(\w+)$/)?.[1];
     if (id && commits[id]) {
       // with its runs, the older reference takes a while: its tiles wait for it
-      if (id === 'old' && !url.searchParams.has('summary') && !/outputs=(false|0)/.test(url.search)) await new Promise(resolve => setTimeout(resolve, 700));
+      if (id === 'old' && !url.searchParams.has('summary') && !/outputs=(false|0)/.test(url.search)) await new Promise(resolve => setTimeout(resolve, 2000));
       return route.fulfill({ json: commits[id] });
     }
     const key = Object.keys(api).sort((a, b) => b.length - a.length).find(k => url.pathname.startsWith(k));
@@ -83,7 +83,12 @@ test.afterEach(() => {
 
 // the names on the images, in order
 const names = viewer => viewer.locator('.qiv-stage > .qiv-pane .qiv-label, .qiv-tile > .qiv-label:not(.qiv-label-quiet)').evaluateAll(labels => labels
-  .map(label => ({ left: label.closest('.qiv-pane, .qiv-tile').getBoundingClientRect().left, top: label.closest('.qiv-pane, .qiv-tile').getBoundingClientRect().top, text: label.textContent.replace(/\d+×\d+$/, '') }))
+  .map(label => ({
+    left: label.closest('.qiv-pane, .qiv-tile').getBoundingClientRect().left,
+    top: label.closest('.qiv-pane, .qiv-tile').getBoundingClientRect().top,
+    // without the image's size
+    text: [...label.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join(''),
+  }))
   .sort((a, b) => a.top - b.top || a.left - b.left).map(label => label.text));
 
 test('shows the references stacked together in the image viewer, compared with the one selected', async ({ page }) => {
@@ -127,7 +132,7 @@ test('shows the references stacked together in the image viewer, compared with t
   await expect(viewer.locator('.qiv-tile-note').first()).toHaveText(/^\d\d\.\d from ref 2$/);
   expect(await viewer.locator('.qiv-stage').boundingBox()).toEqual(stage);
   // the new image can't be the anchor
-  await expect(viewer.getByRole('button', { name: /^new/ })).toHaveAttribute('title', '');
+  await expect(viewer.getByRole('button', { name: /^new/ })).toHaveClass(/qiv-label-fixed/);
 
   // A tab, or r, does the same
   await page.getByRole('tab', { name: /^Reference 1:/ }).click();
@@ -142,7 +147,7 @@ test('shows the references stacked together in the image viewer, compared with t
   // Dragging a tab reorders the images, the pair shown alone stays the same two, the anchor stays the anchor
   await page.getByRole('tab', { name: /^Reference 3:/ }).dragTo(page.getByRole('tab', { name: /^Reference 1:/ }), { targetPosition: { x: 5, y: 10 } });
   await expect(page.getByRole('tab', { name: /^Reference 1: ref 3/ })).toBeVisible();
-  await expect.poll(() => names(viewer)).toEqual(['new', 'ref']);
+  await expect.poll(() => names(viewer)).toEqual(['new', 'ref = ref 3']);
   await viewer.getByRole('button', { name: 'All 4 images' }).click();
   await expect(viewer.locator('.qiv-tile')).toHaveCount(3);
   await expect.poll(() => names(viewer)).toEqual(['new', 'ref 3', 'ref = ref 3', 'ref 2']);

@@ -71,7 +71,7 @@ const manifestQuery = output => {
 
 const empty_manifest = {};
 const no_options = {};
-// The references shown together with the one compared: none, unless users tick some (useComparison().together)
+// The references shown together with the one compared: none with one reference, or one at a time (useComparison().together)
 const no_others = [];
 // like before, outputs whose manifest can't be fetched are shown without files
 const manifest_of = query => query.data ?? (query.isError ? empty_manifest : undefined);
