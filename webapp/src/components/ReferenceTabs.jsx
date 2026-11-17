@@ -632,11 +632,11 @@ const ReferenceTab = ({ reference, project, details, actions, batch_counts, drag
   const { is_top } = reference;
   // the references shown together with the one compared: { mode, anchor ('new' or 'reference'), anchor_name, primary,
   // toggle, setMode }, see ReferenceTabs. The images are compared with the anchor: the top results, or the reference shown.
+  const { together } = actions;
   const all_together = together.mode === 'all';
   const is_anchor = all_together && (is_top ? together.anchor === 'new' : reference.is_shown && together.anchor === 'reference');
   // together, a click on the top results makes them the anchor
   const top_button = is_top && !!actions.show;
-  const { together } = actions;
   // a press on the checkbox is not the start of a drag of the tab
   const pressed_check = useRef(false);
   const what = is_top ? 'Top' : `Reference ${reference.number}`;

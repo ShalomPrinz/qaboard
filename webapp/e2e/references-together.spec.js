@@ -151,7 +151,7 @@ test('shows the references stacked together in the image viewer, compared with t
   // A tab makes its reference the anchor, the new results' tab makes new the anchor again
   await page.getByRole('tab', { name: /^Reference 2:/ }).click();
   await expect(anchor(viewer)).toHaveText(/^ref 2/);
-  await page.locator('.qa-tabs [data-top]').click();
+  await page.getByRole('button', { name: /^Top: new/ }).click();
   await expect(anchor(viewer)).toHaveText(/^new/);
   await expect(page.getByRole('tab', { name: /^Reference 2:/ })).toHaveAttribute('aria-selected', 'true');
 

@@ -324,8 +324,8 @@ describe('several references together', () => {
   const segment = name => within(mode()).getByRole('radio', { name });
   const anchor = () => screen.getByRole('img', { name: /: the anchor\. The other images are compared with it$/ });
 
-  test('by default they are all shown: the tab selected is the anchor, users untick the others', async () => {
-    show(`/p/commit/${a}?reference=${b}&compare=${c}&compare=${d}`);
+  test('they are all shown, users untick the others. With the reference as anchor, it follows the tab selected', async () => {
+    show(`/p/commit/${a}?reference=${b}&compare=${c}&compare=${d}&anchor=reference`);
     expect(segment('Together')).toBeChecked();
     // the reference compared: an anchor, nothing to tick. The top results have their dot
     expect(anchor()).toHaveAccessibleName('ref: the anchor. The other images are compared with it');
@@ -334,7 +334,7 @@ describe('several references together', () => {
     await waitFor(() => expect(check('Show release 1.0 next to ref in the image viewer')).toBeChecked());
     expect(check('Show ref 3 next to ref in the image viewer')).toBeChecked();
     // nothing to say in the URL
-    expect(window.location.search).toBe(`?reference=${b}&compare=${c}&compare=${d}`);
+    expect(window.location.search).toBe(`?reference=${b}&compare=${c}&compare=${d}&anchor=reference`);
 
     // unticking doesn't compare with it, rename it, or drag it
     const box = check('Show ref 3 next to ref in the image viewer');
@@ -364,11 +364,68 @@ describe('several references together', () => {
 
     // ticking again: the URL is as before
     fireEvent.click(check('Show ref 3 next to ref in the image viewer'));
-    await waitFor(() => expect(window.location.search).toBe(`?reference=${b}&compare=${c}&compare=${d}`));
+    await waitFor(() => expect(window.location.search).toBe(`?reference=${b}&compare=${c}&compare=${d}&anchor=reference`));
+  });
+
+  test('the anchor is the top results by default, a click on a tab makes it the anchor', async () => {
+    show(`/p/commit/${a}?reference=${b}&compare=${c}&compare=${d}`);
+    const top = () => screen.getByRole('button', { name: /^Top: new/ });
+    expect(anchor()).toHaveAccessibleName('new: the anchor. The other images are compared with it');
+    expect(top()).toContainElement(anchor());
+    expect(top()).toHaveAttribute('aria-pressed', 'true');
+    expect(top()).not.toHaveAttribute('title');
+    // the reference compared is always shown, the others are next to new
+    const primary = check('ref: the reference compared everywhere, always shown');
+    expect(primary).toBeChecked();
+    expect(primary).toBeDisabled();
+    expect(primary).toHaveAttribute('title', 'The reference compared everywhere: always shown');
+    expect(check('Show ref 3 next to new in the image viewer')).toBeChecked();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+
+    // "r" changes the reference, not the anchor
+    fireEvent.keyDown(document.body, { key: 'r' });
+    await waitFor(() => expect(reference()).toBe(c));
+    expect(query().get('anchor')).toBeNull();
+    expect(top()).toContainElement(anchor());
+    expect(check('release 1.0: the reference compared everywhere, always shown')).toBeDisabled();
+
+    // a click on a reference's tab compares with it, and makes it the anchor
+    fireEvent.click(tab(3));
+    await waitFor(() => expect(reference()).toBe(d));
+    expect(query().get('anchor')).toBe('reference');
+    expect(tab(3)).toContainElement(anchor());
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    expect(top()).toHaveAttribute('aria-pressed', 'false');
+    expect(top()).toHaveAttribute('title', 'Compare the other images with new: make it the anchor');
+    // "r": the anchor follows the reference
+    fireEvent.keyDown(document.body, { key: 'r' });
+    await waitFor(() => expect(reference()).toBe(b));
+    expect(tab(1)).toContainElement(anchor());
+
+    // a click on the top results makes them the anchor again: the reference stays
+    fireEvent.click(top());
+    await waitFor(() => expect(query().get('anchor')).toBeNull());
+    expect(reference()).toBe(b);
+    expect(top()).toContainElement(anchor());
+    // the tab selected, clicked: the anchor. Then the top results with the keyboard
+    fireEvent.click(tab(1));
+    await waitFor(() => expect(query().get('anchor')).toBe('reference'));
+    expect(reference()).toBe(b);
+    fireEvent.keyDown(top(), { key: 'Enter' });
+    await waitFor(() => expect(query().get('anchor')).toBeNull());
+  });
+
+  test('one at a time there is no anchor: the top results are not a button', () => {
+    show(`/p/commit/${a}?reference=${b}&compare=${c}&together=0&anchor=reference`);
+    expect(screen.queryByRole('button', { name: /^Top: new/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /the anchor/ })).not.toBeInTheDocument();
+    fireEvent.click(tab(2));
+    // the link's anchor is what it was
+    expect(query().get('anchor')).toBe('reference');
   });
 
   test('one at a time, or together: in the link, and remembered for the other pages', async () => {
-    show(`/p/commit/${a}?reference=${b}&compare=${c}&compare=${d}`);
+    show(`/p/commit/${a}?reference=${b}&compare=${c}&compare=${d}&anchor=reference`);
     fireEvent.click(segment('One at a time'));
     await waitFor(() => expect(query().get('together')).toBe('0'));
     expect(usePrefsStore.getState().referencesTogether).toBe(false);
@@ -393,7 +450,7 @@ describe('several references together', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     cleanup();
     // the link wins
-    show(`/p/commit/${a}?reference=${b}&compare=${c}&together=1`);
+    show(`/p/commit/${a}?reference=${b}&compare=${c}&together=1&anchor=reference`);
     expect(segment('Together')).toBeChecked();
     expect(screen.getAllByRole('checkbox')).toHaveLength(1);
     expect(usePrefsStore.getState().referencesTogether).toBe(false);
@@ -432,7 +489,7 @@ describe('several references together', () => {
   });
 
   test('moving a tab: its tick and its id go with it, its number is its place', async () => {
-    show(`/p/commit/${a}?reference=${b}&compare[0]=${c}&compare[1][commit]=${d}&compare[1][together]=0`);
+    show(`/p/commit/${a}?reference=${b}&compare[0]=${c}&compare[1][commit]=${d}&compare[1][together]=0&anchor=reference`);
     const state = () => JSON.parse(screen.getByTestId('references').textContent);
     const before = state();
     expect(before.references.map(r => [r.number, r.ticked, r.together])).toEqual([[1, true, false], [2, true, true], [3, false, false]]);

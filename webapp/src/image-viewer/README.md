@@ -119,7 +119,7 @@ The tiles are the same in every mode but single: switching modes moves nothing. 
 pixel under the pointer in every image with its difference from the anchor's, and **how far apart** the images are:
 the mean difference of the colors of their views, for every pair, so that it follows the zoom. Clicking a pair shows
 those two images alone, with everything the viewer does for two images (blind test, the regions, the difference's
-legend...); **All N images** goes back. With an image picked in the **vs** menu, it takes the anchor's place. `details` / `onDetailsChange` hides the panel, e.g. to remember that users
+legend...); **All N images** goes back. With an image picked in the **vs** menu, it takes the anchor's place, or the reference's when the first image is the anchor. `details` / `onDetailsChange` hides the panel, e.g. to remember that users
 closed it (with two images, it hides the values under the pointer).
 
 What compares two images (the analysis panel, the values' difference in the readout of a pair) compares the anchor
