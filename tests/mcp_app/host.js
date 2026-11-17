@@ -25,6 +25,7 @@ async function main() {
     window.events.push({ type: "result-sent" });
     bridge.sendToolResult(result);
   };
+  window.bridge = bridge;  // check.js sends its own results
   await bridge.connect(new PostMessageTransport(iframe.contentWindow, iframe.contentWindow));
 }
 main().catch(e => { window.events.push({ type: "error", message: String(e) }); console.error(e); });

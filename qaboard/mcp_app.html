@@ -80,6 +80,8 @@ function request(method, params) {
 function notify(method, params) { send({ method, params }); }
 
 window.addEventListener("message", event => {
+  // only the host talks to us
+  if (event.source !== window.parent) return;
   const message = event.data;
   if (!message || message.jsonrpc !== "2.0") return;
   if (message.id !== undefined && !message.method) {  // an answer to one of our requests
@@ -152,7 +154,12 @@ function show(html) { app.innerHTML = html; }
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
+// Everything below that comes from the server (names, units, messages) is escaped: projects' data is written by
+// whoever sends results, and HTML in it must not run here, where it could post to the chat as the user.
 function num(value, suffix = "", scale = 1) {
+  return esc(rawNum(value, suffix, scale));
+}
+function rawNum(value, suffix = "", scale = 1) {
   if (value === null || value === undefined || typeof value !== "number" || !isFinite(value)) return "–";
   const v = value * (scale || 1);
   const a = Math.abs(v);
@@ -160,9 +167,25 @@ function num(value, suffix = "", scale = 1) {
   return `${text}${suffix || ""}`;
 }
 function change(relative) {
-  if (relative === null || relative === undefined || !isFinite(relative)) return "–";
+  if (typeof relative !== "number" || !isFinite(relative)) return "–";
   return Math.abs(relative) < 10 ? `${relative >= 0 ? "+" : ""}${(relative * 100).toFixed(2)}%` : `${relative >= 0 ? "+" : ""}${relative.toFixed(1)}×`;
 }
+// Images from tool results: only these types, only base64, as data: URLs
+function imageSrc(c) {
+  const mime = c.mimeType || c.mime_type;
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(mime) || typeof c.data !== "string" || !/^[A-Za-z0-9+/=\s]*$/.test(c.data)) return null;
+  return `data:${mime};base64,${c.data.replace(/\s/g, "")}`;
+}
+function imagesOf(result) {
+  const images = [];
+  (result.content || []).forEach((c, i, all) => {
+    const src = c.type === "image" ? imageSrc(c) : null;
+    if (src) images.push({ src, caption: all[i - 1]?.type === "text" ? String(all[i - 1].text) : "" });
+  });
+  return images;
+}
+// Names from runs, in a question posted to the chat as the user: quoted, on one line, short
+function quoted(text) { return `"${String(text ?? "").replace(/["`\s]+/g, " ").trim().slice(0, 120)}"`; }
 const verdictClass = v => v === "better" ? "better" : v === "worse" ? "worse" : "muted";
 const verdictMark = v => ({ better: "▲ better", worse: "▼ worse", same: "= same", changed: "≠ changed" })[v] || "?";
 function button(label, action, title = "") { return `<button data-action="${esc(action)}" title="${esc(title)}">${esc(label)}</button>`; }
@@ -178,10 +201,7 @@ app.addEventListener("click", event => {
 function render(result) {
   const data = result.structuredContent || {};
   const text = (result.content || []).filter(c => c.type === "text").map(c => c.text);
-  const images = [];
-  (result.content || []).forEach((c, i, all) => {
-    if (c.type === "image") images.push({ src: `data:${c.mimeType || c.mime_type};base64,${c.data}`, caption: all[i - 1]?.type === "text" ? all[i - 1].text : "" });
-  });
+  const images = imagesOf(result);
   if (result.isError) return show(`<pre>${esc(text.join("\n"))}</pre>`);
   const views = { compare: renderCompare, history: renderHistory, images: renderImages, files: renderFiles };
   (views[data.view] || renderText)(data, text, images);
@@ -197,7 +217,7 @@ function renderCompare(data) {
   const refName = ref.name || data.reference_asked || (ref.id || "").slice(0, 8) || "no reference";
   const status = data.status === "complete" ? "" : `<span class="badge worse">${esc(data.status)}</span>`;
   const rows = (data.metrics || []).slice(0, 15).map(m => {
-    const t = m.tests;
+    const t = m.tests && { better: Number(m.tests.better) || 0, worse: Number(m.tests.worse) || 0, same: Number(m.tests.same) || 0 };
     const total = t ? t.better + t.worse + t.same : 0;
     const bar = t && total ? `<span class="bar" title="${t.better} better, ${t.worse} worse, ${t.same} same">
         <span style="width:${100 * t.better / total}%;background:var(--better)"></span>
@@ -207,12 +227,14 @@ function renderCompare(data) {
     const direction = m.smaller_is_better === true ? "↓" : m.smaller_is_better === false ? "↑" : "?";
     return `<tr><td class="name" title="${esc(m.label)}">${esc(m.metric)} <span class="muted" title="better when ${m.smaller_is_better ? "lower" : "higher"}">${direction}</span></td>
       <td class="num">${num(m.ref, m.suffix, m.scale)}</td><td class="num">${num(m.new, m.suffix, m.scale)}</td>
-      <td class="num ${verdictClass(m.verdict)}">${change(m.delta_relative)} <span>${verdictMark(m.verdict)}</span></td>
-      <td>${bar}</td><td class="num muted">${m.sign_test_p === null || m.sign_test_p === undefined ? "–" : m.sign_test_p.toPrecision(2)}</td></tr>`;
+      <td class="num ${verdictClass(m.median)}">${change(m.delta_relative)}</td>
+      <td class="num">${change(m.paired_change)}</td>
+      <td>${bar}</td><td class="${/better/.test(m.consistency) ? "better" : /worse/.test(m.consistency) ? "worse" : "muted"}"
+        title="${typeof m.sign_test_p === "number" ? `sign test p=${m.sign_test_p.toPrecision(2)}` : ""}">${esc(m.consistency)}</td></tr>`;
   }).join("");
   const movers = (data.movers || []).map(mover => {
     const list = (title, entries, cls) => entries.length ? `<tr><th colspan="4">${title}</th></tr>` + entries.map(e => `
-      <tr class="clickable" data-action="${on(() => drill(e))}" title="Show the outputs of run ${e.run_id} next to the reference's">
+      <tr class="clickable" data-action="${on(() => drill(e))}" title="Show the outputs of run ${Number(e.run_id)} next to the reference's">
         <td class="name">${esc(e.test)}</td><td class="num">${num(e.ref)}</td><td class="num">${num(e.new)}</td>
         <td class="num ${cls}">${change(e.delta_relative)}</td></tr>`).join("") : "";
     if (!mover.regressions.length && !mover.improvements.length) return "";
@@ -224,13 +246,16 @@ function renderCompare(data) {
   show(`
     <h2>${esc(data.project)} ${esc((commit.id || "").slice(0, 8))} <span class="muted">vs</span> ${esc(refName)} ${status}</h2>
     <div class="sub">${esc(commit.message ? commit.message.split("\n")[0] : "")} · label <code>${esc(commit.batch || "default")}</code>
-      · ${commit.runs?.total ?? "?"} runs${commit.runs?.failed ? `, <span class="worse">${commit.runs.failed} failed</span>` : ""}</div>
+      · ${esc(commit.runs?.total ?? "?")} runs${data.failed ? `, <span class="worse">${esc(data.failed)} failed${ref.id ? ` (${esc(data.new_failures)} new)` : ""}</span>` : ""}</div>
+    ${data.chosen ? `<div class="muted">Commit: ${esc(data.chosen)}</div>` : ""}
+    ${data.filter_ignored ? `<div class="muted">The URL's filter isn't applied: the whole batch is compared.</div>` : ""}
     ${(data.messages || []).map(m => `<div class="muted">• ${esc(m)}</div>`).join("")}
     <div class="row">${button("Open the Metrics Diff", on(() => openLink(data.links?.metrics_diff)))}
-      ${worst ? button("Ask about the worst regression", on(() => ask(`Why did ${worst.metric} regress on ${worst.test} (run ${worst.run_id} vs ${worst.reference_run_id})? Look at its outputs with look_at_output.`))) : ""}
-      ${data.failures?.length ? button(`Why did ${data.failures.length} run(s) fail?`, on(() => ask(`Use failures to explain why runs failed in ${data.project} ${commit.id}.`))) : ""}</div>
-    <div class="scroll"><table><tr><th>metric</th><th class="num">reference</th><th class="num">new</th><th class="num">change</th>
-      <th>tests better/worse/same</th><th class="num" title="sign test: are tests moving consistently one way?">p</th></tr>${rows}</table></div>
+      ${worst ? button("Ask about the worst regression", on(() => ask(`Why did the metric ${quoted(worst.metric)} regress on the test ${quoted(worst.test)} (run ${Number(worst.run_id)} vs reference run ${Number(worst.reference_run_id)})? Look at its outputs with look_at_output.`))) : ""}
+      ${data.failed ? button(`Why did ${Number(data.failed)} run(s) fail?`, on(() => ask(`Use failures to explain why runs failed in the project ${quoted(data.project)}, commit ${quoted(commit.id)}, label ${quoted(commit.batch || "default")}.`))) : ""}</div>
+    <div class="scroll"><table><tr><th>metric</th><th class="num">reference</th><th class="num">new</th><th class="num">change</th><th class="num">per test</th>
+      <th>tests better/worse/same</th><th title="a sign test: did tests move consistently one way?">tests moved</th></tr>${rows}</table></div>
+    <div class="muted" style="font-size:11px">"change" compares the medians of the runs; "per test" is the median of each test's change.</div>
     ${movers}<div id="drill"></div>`);
 }
 
@@ -257,10 +282,7 @@ async function showImage(entry, path) {
     const div = document.createElement("div");
     target.replaceChildren(div);
     const text = (result.content || []).filter(c => c.type === "text").map(c => c.text);
-    const images = [];
-    (result.content || []).forEach((c, i, all) => {
-      if (c.type === "image") images.push({ src: `data:${c.mimeType || c.mime_type};base64,${c.data}`, caption: all[i - 1]?.text || "" });
-    });
+    const images = imagesOf(result);
     div.innerHTML = imagesHtml(result.structuredContent || {}, text, images);
   } catch (e) {
     target.innerHTML = `<pre>${esc(e.message)}</pre>`;
@@ -282,8 +304,8 @@ function imagesHtml(data, text, images) {
       setTimeout(() => { clearInterval(timer); img.src = first.src; }, 4500);
     }), "Alternate new and reference in place") : "";
     html += `<div class="pair"><div class="pairs">
-      <figure><img src="${a.src}" alt="${esc(a.caption)}"><figcaption>${esc(a.caption)}</figcaption></figure>
-      ${paired ? `<figure><img src="${b.src}" alt="${esc(b.caption)}"><figcaption>${esc(b.caption)}</figcaption></figure>` : "<div></div>"}
+      <figure><img src="${esc(a.src)}" alt="${esc(a.caption)}"><figcaption>${esc(a.caption)}</figcaption></figure>
+      ${paired ? `<figure><img src="${esc(b.src)}" alt="${esc(b.caption)}"><figcaption>${esc(b.caption)}</figcaption></figure>` : "<div></div>"}
       </div><div class="row" style="margin:4px 0 10px">${flicker}</div></div>`;
     if (paired) i++;
   }
@@ -310,7 +332,7 @@ function renderHistory(data) {
   const charts = (data.series || []).map((s, index) => {
     const step = (s.worst_steps || [])[0];
     const askStep = step ? button(`Ask about ${step.commit.slice(0, 8)} (${change(step.delta_relative)})`, on(() =>
-      ask(`Why did ${s.metric} change at commit ${step.commit} in ${data.project}? Use compare with reference ${step.from_commit} and label ${data.label}.`)),
+      ask(`Why did the metric ${quoted(s.metric)} change at commit ${quoted(step.commit)} in the project ${quoted(data.project)}? Use compare with reference ${quoted(step.from_commit)} and label ${quoted(data.label)}.`)),
       "The biggest step the wrong way, in red") : "";
     return `<div class="chart" id="chart${index}">
       <div class="row" style="justify-content:space-between"><strong>${esc(s.metric)}</strong>
@@ -320,10 +342,10 @@ function renderHistory(data) {
   show(`<h2>${esc(data.project)} <span class="muted">· ${esc(data.branch || "all branches")} · label ${esc(data.label)} · ${points.length} commits</span></h2>
     <div class="row" style="margin:6px 0 10px">${button("Open the History page", on(() => openLink(data.links?.history)))}</div>
     <div class="charts">${charts}</div>`);
-  (data.series || []).forEach((s, index) => drawLine(document.getElementById(`chart${index}`), s, points));
+  (data.series || []).forEach((s, index) => drawLine(document.getElementById(`chart${index}`), s, points, data));
 }
 
-function drawLine(container, series, points) {
+function drawLine(container, series, points, data) {
   const svg = container.querySelector("svg"), tip = container.querySelector(".tip");
   const values = points.map((p, i) => ({ i, p, v: p.values?.[series.metric] })).filter(d => typeof d.v === "number" && isFinite(d.v));
   if (!values.length) { svg.outerHTML = `<div class="empty">No values</div>`; return; }
@@ -341,7 +363,7 @@ function drawLine(container, series, points) {
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   for (const tick of [lo, (lo + hi) / 2, hi]) {
     el("line", { x1: pad.l, x2: width - pad.r, y1: y(tick), y2: y(tick), stroke: "var(--border)", "stroke-width": 1 });
-    el("text", { x: pad.l - 4, y: y(tick) + 4, "text-anchor": "end", "font-size": 10, fill: "var(--fg2)" }).textContent = num(tick);
+    el("text", { x: pad.l - 4, y: y(tick) + 4, "text-anchor": "end", "font-size": 10, fill: "var(--fg2)" }).textContent = rawNum(tick);
   }
   if (typeof series.target === "number")
     el("line", { x1: pad.l, x2: width - pad.r, y1: y(series.target), y2: y(series.target), stroke: "var(--accent)", "stroke-dasharray": "4 3", "stroke-width": 1 });
@@ -351,7 +373,7 @@ function drawLine(container, series, points) {
     const dot = el("circle", { cx: x(d.i), cy: y(d.v), r: bad ? 5 : 3, fill: bad ? "var(--worse)" : "var(--accent)", stroke: "var(--bg)", "stroke-width": 1.5, style: "cursor:pointer" });
     dot.addEventListener("mouseenter", () => {
       const step = (series.worst_steps || []).find(s => s.commit === d.p.commit);
-      tip.innerHTML = `<strong>${esc(num(d.v, series.suffix, series.scale))}</strong> · ${esc(d.p.commit.slice(0, 8))} · ${esc((d.p.date || "").slice(0, 10))}<br>
+      tip.innerHTML = `<strong>${num(d.v, series.suffix, series.scale)}</strong> · ${esc(d.p.commit.slice(0, 8))} · ${esc((d.p.date || "").slice(0, 10))}<br>
         ${esc(d.p.message)}${step ? `<br><span class="worse">${change(step.delta_relative)} vs the commit before</span>` : ""}
         <br><span class="muted">click: open · shift-click: ask why</span>`;
       tip.style.display = "block";
@@ -363,7 +385,7 @@ function drawLine(container, series, points) {
     dot.addEventListener("mouseleave", () => { tip.style.display = "none"; });
     dot.addEventListener("click", event => {
       const step = (series.worst_steps || []).concat(series.best_steps || []).find(s => s.commit === d.p.commit);
-      if (event.shiftKey) ask(`Why did ${series.metric} change at commit ${d.p.commit}? Use compare with reference ${step ? step.from_commit : "the commit before it"}.`);
+      if (event.shiftKey) ask(`Why did the metric ${quoted(series.metric)} change at commit ${quoted(d.p.commit)} in the project ${quoted(data.project)}? Use compare with reference ${step ? quoted(step.from_commit) : "the commit before it"}.`);
       else openLink(d.p.url);
     });
   }

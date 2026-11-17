@@ -73,6 +73,11 @@ Cursor takes the same in *.cursor/mcp.json*, under `mcpServers`. Codex: `codex m
 
 `qa mcp` uses your credentials, like `qa`: what `qa auth login` saved, or `QABOARD_TOKEN`. A token with only the
 `read` scope is enough, and it's what we recommend for agents: create one in the web app, **Settings → Tokens**.
+It only sends them to your QA-Board server: links to other servers need a `qa auth login` there, and image servers
+on other hosts get no token.
+
+Without a commit, the tools use the commit checked out where `qa mcp` runs if it has results, else the project's
+latest commit with results, and say which.
 
 ## What to ask {#what-to-ask}
 - *"Did my change improve the detector? Check with QA-Board before saying so."*
@@ -88,20 +93,26 @@ Clients that show MCP prompts offer three procedures as commands: **did_my_chang
 ## What the agent sees {#tools}
 | Tool | Answers |
 |---|---|
-| `compare` | Is this commit better than its reference? Per metric: the medians of the **Summary**, the change, which way is better, how many tests got better and worse, the tests that moved most, failed runs, reruns, and the link to the **Metrics Diff**. |
+| `compare` | Is this commit better than its reference? Per metric: the medians of the **Summary** and their change, the median change per test, how many tests got better and worse and whether consistently, the tests that moved most, failed runs (new or not), and the link to the **Metrics Diff**. |
 | `failures` | Why runs failed: the failed runs grouped by the error at the end of their logs, with an excerpt, and whether the same test failed in the reference. |
-| `look_at_output` | A run's files; an image next to the reference's, whole and where they differ most, in any format the image viewer opens; a text file as a diff with the reference's. |
+| `look_at_output` | A run's files, the changed ones first; an image next to the reference's, whole and where they differ most, in any format the image viewer opens; a text file as a diff with the reference's; the end of the log. |
 | `metric_history` | Medians per commit on a branch, like the **History** page, with the biggest steps and the commits that made them. |
 | `find_results` | Projects, their latest commits with results, labels, run counts and milestones. |
 | `runs_table` | One row per run (input, status, the parameters that differ, metrics) as CSV, for the agent's own analyses. |
-| `check_gate` | The [quality gate](/docs/quality-gate)'s verdict, rule by rule, when `qa mcp` runs in the project's checkout. |
+| `check_gate` | The [quality gate](/docs/quality-gate)'s verdict, rule by rule, when `qa mcp` runs in the project's checkout. It's the verdict CI trusts; `compare` is the evidence. |
 
 The numbers are the server's, the same as the web app's. With each answer, the agent gets the links to the web app
 pages that show it: give them to the people who review the change.
 
-Tests that moved in the same direction say more than a median: `compare` counts them, with a sign test. QA-Board
-doesn't know yet how much a metric moves between identical runs, so an agent shouldn't call a small change of a noisy
-metric, such as a latency, an improvement without repeated runs.
+Tests that moved in the same direction say more than a median: `compare` counts them and says whether they moved
+consistently (a sign test, which needs at least 6 tests). QA-Board doesn't know yet how much a metric moves between
+identical runs, so an agent shouldn't call a small change of a noisy metric, such as a latency, an improvement
+without repeated runs.
+
+### An agent's own experiments {#experiments}
+Have the agent label its runs, `qa --label agent/denoise batch --commit <sha> ci`. `compare` compares them with the
+reference's CI runs when the reference has none with that label, and says so; to compare two experiments, give the
+other one as `reference` (its commit) and `reference_label`. `metric_history` with `label` follows them over commits.
 
 ## Charts and images in the conversation {#apps}
 Clients that render MCP Apps (Claude, Claude Desktop, VS Code GitHub Copilot, Microsoft 365 Copilot, Goose...) show

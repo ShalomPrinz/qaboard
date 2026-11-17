@@ -38,6 +38,23 @@ const NEW = 'a1b2c3d4' + '0'.repeat(32);
   assert.deepStrictEqual(seen.filter(e => e.type === 'tools/call').map(e => e.arguments), [{ run_id: 2 }, { run_id: 2, path: 'output.png', reference_run_id: 12 }]);
   assert.deepStrictEqual(errors, []);
 
+  // results are data: HTML in a project's metric units, test names or messages doesn't run
+  await page.evaluate(() => window.bridge.sendToolResult({
+    content: [{ type: 'text', text: 'x' }, { type: 'image', data: '"><img src=x onerror="window.parent.pwned=1">', mimeType: 'image/png' }],
+    structuredContent: {
+      view: 'compare', project: '<img src=x onerror="window.parent.pwned=1">', status: 'complete', messages: ['<b id=injected>m</b>'],
+      commit: { id: 'abc', message: '<b id=injected>', runs: { total: '<b id=injected>' } }, reference: { id: 'def', name: '<b id=injected>' },
+      metrics: [{ metric: '<b id=injected>', suffix: '<img src=x id=injected onerror="window.parent.pwned=1">', new: 1, ref: 2, delta_relative: -0.5,
+                  median: 'worse', consistency: '<b id=injected>', tests: { better: '<b id=injected>', worse: 1, same: 0 }, smaller_is_better: false }],
+      movers: [{ metric: 'm', regressions: [{ run_id: '<b id=injected>', test: '<b id=injected>', new: 1, ref: 2, delta_relative: -0.5 }], improvements: [] }],
+      failed: 0, links: {},
+    },
+  }));
+  await page.waitForTimeout(500);
+  assert.strictEqual(await frame.locator('#injected').count(), 0, 'HTML from results is shown as text');
+  assert.strictEqual(await page.evaluate(() => window.pwned), undefined, 'scripts from results never run');
+  assert.ok((await frame.locator('table').first().innerText()).includes('<img src=x'), 'the text is still shown');
+
   // metric_history, in the dark
   ({ page, frame, errors, events } = await open('metric_history', { project: 'group/repo', label: 'nightly' }, 'dark'));
   assert.strictEqual(await frame.locator('circle').count(), 3);

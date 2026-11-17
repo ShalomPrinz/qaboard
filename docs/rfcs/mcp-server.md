@@ -117,6 +117,27 @@ variables when given.
 - Clients cap tool results (Claude Code warns above ~25k tokens): keep answers under ~8k tokens by default.
 
 ## What ships (November 2026)
-- `qa mcp` (`qaboard/mcp_server.py`), the tools, prompts and app above, experimental. Tests: `tests/test_mcp_server.py`.
+- `qa mcp` (`qaboard/mcp_server.py`), the tools, prompts and app above, experimental. Tests: `tests/test_mcp_server.py`
+  (against `tests/fake_qaboard.py`, whose answers were checked against the backend's handlers), and the app in a host
+  that uses the official AppBridge (`tests/mcp_app/`, by hand).
 - Backend: the two gaps marked "Yes" above.
 - Docs: `website/docs/mcp.mdx`, the roadmap item moved to Experimental, the `qaboard-results` skill mentions it.
+
+Two reviews (the tools as an agent sees them; correctness and security against the real backend) changed, before
+merging: the app escapes everything from results and only listens to its host; the token only goes to the QA-Board
+server's origin, and URLs of other servers need a `qa auth login` there; `compare` says which failures are new, how
+many tests each count covers, the median change per test, and "consistently better/worse, mixed, too few tests"
+(sign test corrected for the metrics tested) instead of a verdict on medians; an agent's label is compared with the
+reference's CI runs when the reference has none; without a commit, the checkout's or the latest, said in the answer;
+logs are readable (they aren't in manifests); crops never upscale; `metric_history` asks for enough commits, shows the
+typical step and flags steps where runs changed; unknown metrics are errors; lists in `data` are cut.
+
+## Left for later
+- `runs_table` with the reference's values (`with_reference`), so agents don't join two tables.
+- `metric_history`: the reference's median as a baseline, and a `url` argument. The History link can't select metrics
+  (the page doesn't read `selected_metrics`).
+- `compare` and `failures` apply a URL's filter (today they say it isn't applied).
+- The gate evaluated on the server, with project and commit (`check_gate` is local only, it needs a checkout): needed
+  for the remote server.
+- Names: the tools say `label` like `qa gate --label`, URLs and the API say `batch`. Decide before leaving experimental.
+- A redone run counts as failed and pending in the batches' counts (`find_results`).

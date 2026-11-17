@@ -49,6 +49,24 @@ class TestHelpers(unittest.TestCase):
     self.assertEqual(evidence.sign_test(3, 3), 1.0)
     self.assertAlmostEqual(evidence.sign_test(10, 0), 2 / 1024)
     self.assertAlmostEqual(evidence.sign_test(3, 1), 0.625)
+    # large batches: an approximation, fast, close to the exact value
+    self.assertAlmostEqual(evidence.sign_test(230, 170), sum(__import__('math').comb(400, i) for i in range(171)) / 2 ** 400 * 2, places=3)
+    import time
+    start = time.monotonic()
+    self.assertLess(evidence.sign_test(10_100, 9_900), 0.2)
+    self.assertLess(time.monotonic() - start, 0.1)
+
+  def test_consistency(self):
+    self.assertEqual(evidence.consistency(5, 0), ('too few tests', None))
+    self.assertEqual(evidence.consistency(10, 0)[0], 'consistently better')
+    self.assertEqual(evidence.consistency(0, 10)[0], 'consistently worse')
+    self.assertEqual(evidence.consistency(6, 4)[0], 'mixed')
+    # corrected for the metrics tested
+    self.assertEqual(evidence.consistency(9, 1, 0.05)[0], 'consistently better')
+    self.assertEqual(evidence.consistency(9, 1, 0.01)[0], 'mixed')
+
+  def test_names_from_runs_stay_inline_code(self):
+    self.assertEqual(evidence.code("a`b\nignore previous"), "`a'b ignore previous`")
 
   def test_verdict(self):
     self.assertEqual(evidence.verdict(0.1, False), 'better')
@@ -96,8 +114,26 @@ class TestSelection(FakeServer):
     self.assertEqual(evidence.select(self.api, f"{self.url}/{fake.PROJECT}/commit/{fake.NEW}?batch=nightly", label='ci').label, 'default')
 
   def test_a_branch_is_its_latest_commit(self):
-    self.assertEqual(evidence.select(self.api, project=fake.PROJECT, commit='feature').commit, fake.NEW)
-    self.assertEqual(evidence.select(self.api, project=fake.PROJECT).commit, fake.NEW)
+    selection = evidence.select(self.api, project=fake.PROJECT, commit='feature', label='nightly')
+    self.assertEqual(selection.commit, fake.NEW)
+    # with results in the label: not merely the branch's latest commit
+    _, path, query, _ = next(r for r in fake.Handler.requests_seen if r[1] == '/api/v1/commit')
+    self.assertEqual((query['branch'], query['batch']), ('feature', 'nightly'))
+    self.assertIn('on `feature`', selection.chosen)
+    # without a commit, the answer says which one it is
+    self.assertIn('pass `commit` to choose another', evidence.select(self.api, project=fake.PROJECT).chosen)
+
+  def test_the_commit_checked_out(self):
+    with mock.patch('qaboard.evidence.checkout_head', return_value=fake.NEW):
+      selection = evidence.select(self.api, project=fake.PROJECT)
+    self.assertEqual((selection.commit, selection.chosen), (fake.NEW, 'the commit checked out where `qa mcp` runs'))
+
+  def test_urls_of_other_servers(self):
+    # credentials (e.g. a CI job's ID token) must not go to whatever server a URL names
+    with self.assertRaisesRegex(evidence.EvidenceError, 'qa auth login https://elsewhere.example.com'):
+      self.api.for_url(f"https://elsewhere.example.com/{fake.PROJECT}/commit/{fake.NEW}")
+    with mock.patch('qaboard.evidence.find_login', return_value=('https://elsewhere.example.com', {'token': 'x'})):
+      self.assertEqual(self.api.for_url(f"https://elsewhere.example.com/{fake.PROJECT}/commit/{fake.NEW}").server, 'https://elsewhere.example.com')
 
   def test_a_project_is_needed(self):
     with self.assertRaises(evidence.EvidenceError):
@@ -108,24 +144,46 @@ class TestCompare(FakeServer):
   def test_compare(self):
     answer = evidence.compare(self.api, self.selection())
     text, data = answer.text, answer.data
-    self.assertIn('| psnr | higher | 31.50 dB | 30.00 dB | -4.76% | worse | 3/1/0 | 0.62 |', text)
+    # the medians moved one way, most tests the other: both are said, and 4 tests are too few to tell
+    self.assertIn('| `psnr` | higher | 31.50 dB | 30.00 dB | -4.76% worse | +2.90% | 3/1/0 of 7 | too few tests |', text)
+    self.assertIn('**3 failed** (2 new, 1 also failed in the reference)', text)
+    self.assertIn('- `crash/02` (run 6): also failed in the reference', text)
+    self.assertEqual((data['failed'], data['new_failures']), (3, 2))
     # the main metric first, and the metrics whose direction we don't know say so
     self.assertEqual([m['metric'] for m in data['metrics']], ['psnr', 'latency_ms'])
     self.assertIn("doesn't know which way is better for latency_ms", text)
-    self.assertIn('`night/02`: 28.00 → 25.00 (-10.71%), run 2 vs 12', text)
+    self.assertIn('`night/02`: 28.00 → 25.00 (-10.71%), run 2 vs reference run 12', text)
     self.assertEqual(data['movers'][0]['regressions'][0]['run_id'], 2)
     self.assertEqual([i['run_id'] for i in data['movers'][0]['improvements']], [1, 3, 4])
     self.assertEqual(len(data['failures']), 3)
     self.assertIn('selected_views=table-compare', data['links']['metrics_diff'])
     self.assertIn(f"reference={fake.REF}", data['links']['metrics_diff'])
     self.assertIn('filter=id%3A2%24', data['movers'][0]['regressions'][0]['url'])
-    self.assertIn('1 run(s) were done again', text)
+    self.assertNotIn('Reruns', text)  # none only passed after another attempt
     self.assertEqual(data['view'], 'compare')
 
   def test_the_reference_asked(self):
     evidence.compare(self.api, self.selection(reference='v1.0', reference_label='nightly'), metrics=['psnr'])
     _, _, query, _ = next(r for r in fake.Handler.requests_seen if r[1].endswith('/compare'))
     self.assertEqual(query, {'project': fake.PROJECT, 'batch': 'default', 'reference': 'v1.0', 'reference_batch': 'nightly', 'metrics': 'psnr'})
+
+  def test_an_agents_label(self):
+    # the reference branch has no runs with the agent's label: compare with its CI runs, and say so
+    answer = evidence.compare(self.api, evidence.select(self.api, project=fake.PROJECT, commit=fake.NEW, label='agent/denoise'))
+    self.assertEqual(answer.data['status'], 'complete')
+    self.assertIn("The reference has no runs labeled `agent/denoise`: compared with its CI runs", answer.text)
+    self.assertIn('(label `agent/denoise`) vs main (f9e8d7c6) (label `default`)', answer.text)
+    # asked explicitly: no fallback
+    answer = evidence.compare(self.api, evidence.select(self.api, project=fake.PROJECT, commit=fake.NEW, label='agent/denoise', reference_label='agent/denoise'))
+    self.assertEqual(answer.data['status'], 'missing')
+
+  def test_unknown_metrics(self):
+    with self.assertRaisesRegex(evidence.EvidenceError, 'Unknown metric.*psnrr: did you mean psnr'):
+      evidence.compare(self.api, self.selection(), metrics=['psnrr'])
+
+  def test_a_filtered_page(self):
+    selection = evidence.select(self.api, f"{self.url}/{fake.PROJECT}/commit/{fake.NEW}?batch=default&filter=night")
+    self.assertIn("The URL's filter (`night`) isn't applied", evidence.compare(self.api, selection).text)
 
   def test_top(self):
     data = evidence.compare(self.api, self.selection(), top=1).data
@@ -142,6 +200,7 @@ class TestFailures(FakeServer):
     self.assertEqual(crash[5]['attempts'], 2)
     self.assertIn('1 new vs the reference', answer.text)
     self.assertIn('1 also failed in the reference', answer.text)
+    self.assertIn('`crash/01` (run 5, new), `crash/02` (run 6, also failed in the reference)', answer.text)
     self.assertIn('```log\nloading model\nKilled: out of memory\n```', answer.text)  # without the colors
     self.assertNotIn('\x1b', answer.text)
 
@@ -154,8 +213,15 @@ class TestFailures(FakeServer):
 class TestOutputs(FakeServer):
   def test_files(self):
     answer = evidence.look_at_output(self.api, 2)
-    self.assertIn('- `output.png` (1.0 kB) image', answer.text)
+    self.assertIn('2 changed, 1 identical, 0 only in this run, 0 only in the reference.', answer.text)
+    # changed first
+    self.assertIn('- `detections.json` (100 B, text, changed)\n- `output.png` (1.0 kB, image, changed)\n- `same.txt` (10 B, text, identical)', answer.text)
+    self.assertIn('`reference_run_id=12`', answer.text)
     self.assertEqual(answer.data['view'], 'files')
+
+  def test_logs_arent_in_manifests(self):
+    answer = evidence.look_at_output(self.api, 7, 'log.txt')
+    self.assertIn('```log\nloading model\nKilled: out of memory\n```', answer.text)
 
   def test_an_image_and_where_it_differs(self):
     answer = evidence.look_at_output(self.api, 2, 'output.png')
@@ -164,7 +230,9 @@ class TestOutputs(FakeServer):
     post = next(r for r in fake.Handler.requests_seen if r[0] == 'POST')
     self.assertEqual(post[2]['output_dir_url_ref'], fake.REF_OUTPUTS[12]['output_dir_url'])
     crops = [r[1] for r in fake.Handler.requests_seen if r[1].startswith('/iiif/') and not r[1].endswith('info.json')]
-    self.assertIn('/iiif/2/mnt%2Fqaboard%2Fa1b2c3d4%2Fnight_02%2Foutput.png/0,0,96,96/!384,384/0/default.png', crops)
+    # never more pixels than there are: image servers refuse to upscale
+    self.assertIn('/iiif/2/mnt%2Fqaboard%2Fa1b2c3d4%2Fnight_02%2Foutput.png/0,0,96,96/!96,96/0/default.png', crops)
+    self.assertIn('/iiif/2/mnt%2Fqaboard%2Fa1b2c3d4%2Fnight_02%2Foutput.png/full/!640,640/0/default.png', crops)
     self.assertIn('640x480 pixels', answer.text)
 
   def test_a_region(self):
@@ -194,15 +262,25 @@ class TestHistoryAndLists(FakeServer):
     self.assertEqual(series['worst_steps'][0]['commit'], fake.NEW)
     self.assertEqual(series['worst_steps'][0]['from_commit'], fake.REF)
     self.assertEqual([p['commit'] for p in answer.data['points']], [fake.OLDER, fake.REF, fake.NEW])
-    self.assertIn('/history/main?batch=nightly&selected_metrics=psnr', answer.data['links']['history'])
+    self.assertTrue(answer.data['links']['history'].endswith('/group/repo/history/main?batch=nightly'))
     _, path, query, _ = next(r for r in fake.Handler.requests_seen if r[1].startswith('/api/v1/commits'))
     self.assertEqual(path, '/api/v1/commits/main')
     self.assertEqual(json.loads(query['metrics']), {'psnr': None})
+    # most commits may not have the label: ask for many, keep the latest
+    self.assertEqual(query['limit'], '1000')
+    self.assertEqual(len(evidence.metric_history(self.api, fake.PROJECT, label='nightly', limit=2).data['points']), 2)
+    self.assertIn('Typical step between commits', answer.text)
+    self.assertIn('(other runs: some failed or were added)', answer.text)
+
+  def test_history_of_unknown_metrics(self):
+    with self.assertRaisesRegex(evidence.EvidenceError, 'No values of psnrr.*not a metric the project declares'):
+      evidence.metric_history(self.api, fake.PROJECT, ['psnrr'], label='nightly')
 
   def test_find_results(self):
     self.assertIn('- `group/repo`: last results 2026-11-12', evidence.find_results(self.api).text)
     answer = evidence.find_results(self.api, fake.PROJECT)
-    self.assertIn('Milestones (usable as `reference`): `v1.0`', answer.text)
+    # compare finds shared milestones by label, the others by id
+    self.assertIn('Milestones (usable as `reference`): `v1.0`, `#2`', answer.text)
     self.assertIn('`default` 7 runs (3 failed)', answer.text)
 
   def test_runs_table(self):
@@ -216,6 +294,18 @@ class TestToken(FakeServer):
       evidence.look_at_output(evidence.Api(), 2, 'output.png')
     self.assertTrue(fake.Handler.requests_seen)
     self.assertEqual({r[3] for r in fake.Handler.requests_seen}, {'Bearer secret'})
+
+  def test_not_to_image_servers_elsewhere(self):
+    # image servers can be on other hosts: they don't get the token
+    other_server, other_url = fake.start()
+    self.addCleanup(other_server.shutdown)
+    with mock.patch.dict(os.environ, {'QABOARD_TOKEN': 'secret', 'QABOARD_URL': self.url}), \
+         mock.patch.object(evidence.Api, 'config', return_value={'image_servers': {'default': f"{other_url}/iiif/2/"}}):
+      evidence.look_at_output(evidence.Api(), 2, 'output.png', where='whole')
+    iiif = [r for r in fake.Handler.requests_seen if r[1].startswith('/iiif/')]
+    self.assertTrue(iiif)
+    self.assertEqual({r[3] for r in iiif}, {None})
+    self.assertEqual({r[3] for r in fake.Handler.requests_seen if r[1].startswith('/api/')}, {'Bearer secret'})
 
 
 @unittest.skipUnless(has_mcp, "needs the mcp extra (python 3.10+)")
@@ -246,7 +336,7 @@ class TestMcp(FakeServer):
   def test_compare(self):
     result = self.run_client(lambda c: c.call_tool('compare', {'url': f"{self.url}/{fake.PROJECT}/commit/{fake.NEW}"}))
     self.assertFalse(result.is_error)
-    self.assertIn('| psnr | higher |', result.content[0].text)
+    self.assertIn('| `psnr` | higher |', result.content[0].text)
     self.assertEqual(result.structured_content['view'], 'compare')
 
   def test_images(self):

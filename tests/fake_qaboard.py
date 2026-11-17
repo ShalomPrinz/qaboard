@@ -62,7 +62,7 @@ FILES = {
   'output.png': {'st_size': 1000, 'md5': 'aaa'},
   'detections.json': {'st_size': 100, 'md5': 'bbb'},
   'same.txt': {'st_size': 10, 'md5': 'same'},
-  'log.txt': {'st_size': 200, 'md5': 'ccc'},
+  # like real manifests (outputs_manifest in qaboard/utils.py), without log.txt
 }
 TEXTS = {
   'detections.json': ('{"boxes": 3,\n "score": 0.9}\n', '{"boxes": 2,\n "score": 0.9}\n'),
@@ -154,12 +154,17 @@ class Handler(BaseHTTPRequestHandler):
     if path == '/api/v1/projects':
       return self.answer(200, {PROJECT: {'latest_output_datetime': '2026-11-12T10:00:00'}, 'other/old': {'latest_output_datetime': '2025-01-01T00:00:00'}})
     if path == '/api/v1/milestones':
-      return self.answer(200, {'milestones': [{'id': 1, 'label': 'v1.0'}], 'favorite_groups': []})
+      return self.answer(200, {'milestones': [{'id': 1, 'label': 'v1.0', 'shared': True}, {'id': 2, 'label': 'mine', 'shared': False}], 'favorite_groups': []})
     if path.startswith('/api/v1/commits'):
       if query.get('batch') == 'nightly':
         return self.answer(200, history_answer())
       return self.answer(200, [commit_answer(NEW, NEW_OUTPUTS)])
     if path == f"/api/v1/commit/{NEW}/compare":
+      # like the server: the reference's runs have the same label, unless asked otherwise. main only has CI runs
+      if (query.get('reference_batch') or query.get('batch', 'default')) not in ('default', 'ci'):
+        return self.answer(200, {**compare_answer(query.get('reference')), 'status': 'missing', 'tests': [],
+                                 'messages': [f"No reference: no milestone or commit \"main\", and no commit on the branch \"main\" has runs in the batch \"{query.get('reference_batch') or query['batch']}\"."],
+                                 'reference': {'requested': 'main', 'type': 'branch', 'milestone': None, 'id': None, 'batch': query['batch'], 'runs': {}, 'gate': None}})
       return self.answer(200, compare_answer(query.get('reference')))
     if path in ('/api/v1/commit', '/api/v1/commit/feature') or path == f"/api/v1/commit/{NEW}":
       return self.answer(200, commit_answer(NEW, NEW_OUTPUTS))
