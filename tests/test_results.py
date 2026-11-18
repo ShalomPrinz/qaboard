@@ -677,7 +677,11 @@ class TestRunsPageUrl(unittest.TestCase):
       'project': 'kitefin/detector', 'experiment': 'backbone/lr-sweep', 'since_days': 7, 'scope': 'mine',
       'status': 'running,failed', 'q': 'lr=0.01', 'limit': 500, 'offset': 0,
     })
-    # the selected rows: what the page plots
+    # the run open in the page: its link gives that run
+    self.assertEqual([r.id for r in found], [11])
+    # else the selected rows: what the page plots
+    with mock_get(project_runs_page([11, 12, 14])):
+      found = runs(url.replace('&run=11', ''))
     self.assertEqual([r.id for r in found], [11, 12])
 
   def test_defaults_and_overrides(self):

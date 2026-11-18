@@ -480,6 +480,13 @@ run.log_params({"model": {"width": 2}, "lr": 0.2})
 run.log_metrics({"long": "x" * 600})
 assert dict(run.metrics) == {"loss": 0.2, "ok": 2.0, "mAP": 0.41, "verdict": "good", "long": "x" * 500}, run.metrics
 assert run.params == {"lr": 0.2, "model": {"depth": 50, "width": 2}}, run.params
+# links: the same text replaces the link, they show as the run's badges
+run.log_link("Model card", "https://hub/v1")
+run.log_link("Dataset", "https://data/coco", icon="database")
+run.log_link("Model card", "https://hub/v2")
+assert run.params["badges"] == [{"text": "Dataset", "href": "https://data/coco", "icon": "database"}, {"text": "Model card", "href": "https://hub/v2"}], run.params
+raises(TypeError, run.log_link, "Model card", None)
+run.log_params({"badges": []})
 # saving the same name again replaces the file: it is the run's own
 run.log_artifact("checkpoints/last.pt", b"1")
 assert run.log_artifact("checkpoints/last.pt", b"22").read_bytes() == b"22"
@@ -489,7 +496,7 @@ assert run.log_artifact(run.output_dir.parent / "report.html") == run.output_dir
 # the same Run as qaboard.runs(url) gives
 picture = run.run
 assert type(picture) is Run and picture.state == 'running' and picture.input == 'eval' and picture.metrics == run.metrics
-assert picture.params == run.params and picture.data['params'] == {"model": {"depth": 50, "width": 2}, "lr": 0.2}
+assert picture.params == run.params and picture.data["params"] == {"model": {"depth": 50, "width": 2}, "lr": 0.2, "badges": []}
 run.finish()
 assert run.run.state == 'finished' and run.run.metrics['is_failed'] is False
 assert [p.value for p in run.run.series("loss")][:3] == [1.0, 0.5, 0.25]

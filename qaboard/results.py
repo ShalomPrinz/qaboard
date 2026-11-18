@@ -168,6 +168,8 @@ def _runs_page(url: str, server: Optional[str] = None) -> Optional[Dict[str, Any
   days = _text(query, 'days')
   statuses = [s for s in (_text(query, 'status') or '').split(',') if s in STATUSES]
   selected = [int(i) for i in (_text(query, 'selected') or '').split(',') if i.strip().isdigit()]
+  # the run open in the page: its link gives that run
+  opened = _text(query, 'run')
   return {
     'server': (server or f"{parts.scheme}://{parts.netloc}").rstrip('/'),
     'project': '/'.join(segments[:index]),
@@ -179,7 +181,7 @@ def _runs_page(url: str, server: Optional[str] = None) -> Optional[Dict[str, Any
     'filter': _text(query, 'q'),
     'user': _text(query, 'user'),
     'include_ci': _text(query, 'ci') == '1',
-    'selected': selected,
+    'selected': [int(opened)] if opened and opened.isdigit() else selected,
   }
 
 
@@ -668,7 +670,7 @@ def runs(url: Optional[str] = None, *, project: Optional[str] = None, commit: Op
       limit=limit, server=page['server'], token=token,
       include_deleted=include_deleted, include_hidden=include_hidden, dry_run=dry_run)
     if page['selected']:
-      # runs selected in the table: the page plots those
+      # the run open in the page, else the runs selected in the table: the page plots those
       found = Runs([r for r in found if r.id in page['selected']], server=found.server)
     return found
   across = {'experiment': experiment, 'since': since, 'scope': scope, 'user': user, 'status': status, 'include_ci': include_ci, 'limit': limit}

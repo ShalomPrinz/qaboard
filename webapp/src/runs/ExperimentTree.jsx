@@ -4,6 +4,8 @@ import { useState } from "react";
 import styled from "styled-components";
 import { Button, Classes, Icon, InputGroup, Menu, MenuItem, Popover, Spinner, Tooltip } from "@blueprintjs/core";
 
+import { ExperimentsHelp } from "./help";
+
 import { Link } from "../router";
 import { copyLink, copyWithToast } from "../utils/clipboard";
 import { ancestors, path_parts } from "./tree";
@@ -132,7 +134,7 @@ export const ExperimentTree = ({ project, tree, selected, loading, has_more, onP
   const count = tree.children.length;
   return <Nav aria-label="Experiments">
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-      <h4 className={Classes.HEADING} style={{ margin: 0, fontSize: 14 }}>Experiments</h4>
+      <h4 className={Classes.HEADING} style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 2 }}>Experiments <ExperimentsHelp/></h4>
       {loading && <Spinner size={12} aria-label="Loading the experiments"/>}
     </div>
     {path_parts(selected).length > 0 || count > 6

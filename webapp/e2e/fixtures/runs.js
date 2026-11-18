@@ -2,7 +2,16 @@
 // diverges and one still running, a warmup study under it, a backbone comparison, a quantization study.
 // mockRunsApi(page) answers the API and serves the runs' files, like the server would (backend/backend/api/runs.py).
 export const project = 'kitefin/detector';
-const qatools_config = { project: { name: project } };
+// the Integrations menu's links, filled for each run's commit in the run panel's Links
+const qatools_config = {
+  project: { name: project },
+  integrations: [
+    { text: 'Model zoo', href: 'https://models.example.com/detector/${commit.id.slice(0, 8)}', icon: 'cube' },
+    { text: 'CI pipeline', href: 'https://ci.example.com/kitefin/detector/-/commit/${commit.id}', icon: 'build' },
+    { divider: true },
+    { text: 'Retrain', webhook: 'https://ci.example.com/hooks/retrain' },
+  ],
+};
 
 // deterministic noise
 const random = seed => () => {
@@ -64,7 +73,18 @@ export const make_runs = (now = Date.now()) => {
     const label = origin === 'ci' ? experiment : `@${user}| ${experiment}`;
     runs.push({
       id, platform: 'linux', configurations: ['configs/detector.yaml', configs], extra_parameters: {},
-      data: { sdk: { script: 'train.py', qaboard_version: '1.9.0' }, user, origin, ...(commit === 'c2' && user === 'bob' ? { dirty: true } : {}) },
+      data: {
+        sdk: { script: 'train.py', qaboard_version: '1.9.0' }, user, origin, ...(commit === 'c2' && user === 'bob' ? { dirty: true } : {}),
+        // what run.log_params() and run.log_link() reported
+        params: {
+          device: 'cuda:0', world_size: 1, weights: 25_557_032, optimizer: { name: 'adamw', betas: [0.9, 0.999], weight_decay: 0.05 },
+          data: { train: '/datasets/coco/mini-train', workers: 8 },
+          badges: [
+            { text: 'Model card', href: `https://models.example.com/detector/runs/${id}`, icon: 'id-number' },
+            { text: 'Dataset', href: 'https://data.example.com/coco/mini-train', icon: 'database' },
+          ],
+        },
+      },
       metrics: metrics_of(series), is_failed: failed, is_pending: running, is_running: running, deleted: false,
       created_date: iso(started).replace('Z', ''), queued_at: null, started_at: iso(started), finished_at: running ? null : iso(started - hours),
       output_dir_url: `/s/mnt/qaboard/${project}/runs/${id}`, test_input_database: '/datasets', test_input_path: input, test_input_metadata: {},
@@ -101,6 +121,23 @@ export const make_runs = (now = Date.now()) => {
     started: 1.2, hours: 1, running: true, series: training({ lr: 5e-4, logged: 700, seed: 30 }),
   });
   return runs;
+};
+
+// A training's files: its checkpoints (fewer while it runs, none when it diverged early), its exports, its logs
+const files_of = run => {
+  const file = (st_size, md5 = String(run?.id)) => ({ st_size, md5 });
+  const files = { 'series.json': file(41_000), 'series.jsonl': file(486_000), 'log.txt': file(52_300), 'run.json': file(2_100), 'metrics.json': file(380), 'manifest.outputs.json': file(900) };
+  if (!run) return files;
+  const epochs = run.is_running ? 2 : run.is_failed ? 0 : 5;
+  for (let epoch = 1; epoch <= epochs; epoch++) files[`checkpoints/epoch-${epoch}.pt`] = file(102_400_000 + epoch * 1013);
+  if (epochs > 0) files['checkpoints/last.pt'] = file(102_405_065);
+  if (!run.is_running && !run.is_failed) {
+    files['checkpoints/best.pt'] = file(102_404_052);
+    files['export/detector.onnx'] = file(97_820_000);
+    files['eval/predictions.json'] = file(8_400_000);
+    files['eval/pr_curves.png'] = file(184_000);
+  }
+  return files;
 };
 
 const prefix_of = (experiment, node) => !node || experiment === node || experiment.startsWith(`${node}/`);
@@ -160,11 +197,12 @@ export const mockRunsApi = async (page, { runs = make_runs(), user = 'alice', ho
       return json({
         id: commit.id, hexsha: commit.id, project_id: project, branch: commit.branch, message: commit.message, committer_name: commit.committer_name,
         authored_datetime: new Date().toISOString(), data: { qatools_config: config }, parents: [], deleted: false,
+        artifacts_url: `/s/mnt/qaboard/artifacts/${project}/${commit.id.slice(0, 2)}/${commit.id}`,
         batches: Object.fromEntries(labels.map(label => [label, { label, data: {}, valid_outputs: 1, pending_outputs: 0, running_outputs: 0, failed_outputs: 0 }])),
       });
     }
     const manifest = pathname.match(/^\/api\/v1\/output\/(\d+)\/manifest/);
-    if (manifest) return json({ 'series.json': { st_size: 4000, md5: manifest[1] }, 'series.jsonl': { st_size: 40000, md5: manifest[1] }, 'log.txt': { st_size: 300, md5: 'l' } });
+    if (manifest) return json(files_of(runs.find(run => run.id === Number(manifest[1]))));
     if (pathname.startsWith('/api/v1/commits') || pathname.startsWith('/api/v1/batches')) return json([]);
     if (pathname.startsWith('/api/v1/project/branches')) return json(['main']);
     if (pathname.startsWith('/api/v1/milestones')) return json([]);
@@ -176,8 +214,7 @@ export const mockRunsApi = async (page, { runs = make_runs(), user = 'alice', ho
     if (!run) return route.fulfill({ status: 404 });
     if (pathname.endsWith('/series.json'))
       return route.fulfill({ json: { format: 'qaboard-series', version: 1, started_at: Date.parse(run.started_at) / 1000, series: run._series } });
-    if (pathname.endsWith('/manifest.outputs.json'))
-      return route.fulfill({ json: { 'series.json': { st_size: 4000, md5: String(run.id) }, 'series.jsonl': { st_size: 40000, md5: String(run.id) }, 'log.txt': { st_size: 300, md5: 'l' }, 'checkpoints/best.pt': { st_size: 98_000_000, md5: 'c' } } });
+    if (pathname.endsWith('/manifest.outputs.json')) return route.fulfill({ json: files_of(run) });
     if (pathname.endsWith('/log.txt')) return route.fulfill({ body: `step 0 loss 2.4\n...\nfinished\n` });
     return route.fulfill({ status: 404 });
   });

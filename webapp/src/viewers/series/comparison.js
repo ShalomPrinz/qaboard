@@ -1,6 +1,7 @@
 // The series of many runs on the same plots (SeriesComparison.jsx): which runs, how they are named and colored, and
 // the traces to draw. Pure functions, tested in __tests__/seriesComparison.test.js.
 import { smooth } from './series';
+import { is_hidden } from "../../configurations/tokens";
 
 // One color per run, or per value of a parameter. Readable on the light and dark themes; runs past the last color
 // start again from the first with dotted lines.
@@ -12,8 +13,6 @@ const DASHES = ['solid', 'dot', 'dashdot', 'longdash'];
 export const run_style = index => ({ color: RUN_COLORS[index % RUN_COLORS.length], dash: DASHES[Math.floor(index / RUN_COLORS.length) % DASHES.length] });
 
 const is_object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-// what the web app doesn't show as configuration: view hints, regions of interest
-const HIDDEN_PARAMS = new Set(['view', 'roi']);
 
 // A run's parameters: the mappings of its configurations, its tuning parameters, then what it reported itself
 export const run_params = output => {
@@ -21,7 +20,8 @@ export const run_params = output => {
   for (const source of [...(output?.configurations ?? []), output?.extra_parameters, output?.data?.params])
     if (is_object(source))
       for (const [key, value] of Object.entries(source))
-        if (!HIDDEN_PARAMS.has(key)) params[key] = value;
+        // what the web app doesn't show as configuration: links (badges), view hints, regions of interest
+        if (!is_hidden(key, value)) params[key] = value;
   return params;
 };
 

@@ -61,13 +61,19 @@ If you come from an experiment tracker:
 Two runs with other configurations are two runs, shown side by side in the batch. Starting the same run again is a
 new attempt of it: see [run again, or resume](#attempts).
 
+**There are no run ids to generate or keep track of.** Trackers that name runs with a random id can't tell that
+Tuesday's run and today's are the same training on two commits: QA-Board can, because the configuration names the
+run. To start several runs of one configuration, a few seeds or a repeated trial, put what differs in the
+configuration: `configs=[{"lr": 1e-3, "seed": seed}]`. The web app then groups them by `seed`, or draws their mean
+and range. To point someone to a run, copy its link in the web app; in code, `run.id` is its number on the server.
+
 ### Name your experiments {#experiments}
 Name experiments like folders, `<area>/<question>`: `backbone/lr-sweep`, `backbone/resnet-vs-convnext`,
 `quantization/int8-calibration`. The [Runs page](/docs/user-guide/runs) shows them as a tree: open `backbone` to see
 the runs of everything under it, and every level has an address to share. Keep what varies between the runs of an
 experiment in `configs`, the seed or the trial included, not in its name: the runs of an experiment then compare,
 and the page colors and groups them by those parameters. Your runs and your teammates' of the same experiment are
-one level, whoever ran them. Levels can't be named like the web app's pages: `commit`, `commits`, `committer`,
+one level, whoever ran them. There are no groups or tags to create: a level is a group, and a new name a new one. Levels can't be named like the web app's pages: `commit`, `commits`, `committer`,
 `history`, `dashboard`, `milestone` or `runs`.
 
 ## Log values, metrics, parameters and files {#logging}
@@ -123,6 +129,32 @@ run.log_artifact(confusion_matrix_path)                                  # a fil
 The web app lists them in **Output Files** and opens them with the viewer their name picks: images, plots, text...
 To show a file on the run's card, list it in [`outputs.visualizations`](/docs/visualizations). What the process
 prints is saved in the run's *log.txt*, shown in **Logs**.
+
+**Save checkpoints in the run's folder**, under *checkpoints/* or with a model's extension (`.pt`, `.ckpt`,
+`.safetensors`, `.onnx`, `.h5`...): the [Runs page](/docs/user-guide/runs#files) lists them first in the run's
+**Files**, with a download button and the code that loads them. From a notebook, a run's files are in its
+`output_dir`:
+
+```python
+run = qb.runs("<the Runs page's address, with the run open>")[0]
+model.load_state_dict(torch.load(run.output_dir / "checkpoints/best.pt", map_location="cpu"))
+```
+
+**Log the whole configuration.** What defines the run goes in `configs`, your hyperparameters and the config file's
+name; the rest of what it ran with goes in `log_params()`: paths, the number of workers, resolved defaults
+(`run.log_params(vars(args))`). The run's **Configuration** tab shows both, and anyone can run it again with the same
+values. Only `configs` tells runs apart: a new number of workers is not a new run.
+
+### Links {#links}
+```python
+run.log_link("Model card", f"https://models.example.com/detector/{run.id}")
+run.log_link("Dataset", "https://data.example.com/coco-mini", icon="database")
+```
+
+Links show in the run's **Links** tab on the Runs page, and as badges on its card. The same text again replaces the
+link. The run's commit adds its own: the links of the project's [Integrations menu](/docs/triggering-third-party-tools),
+filled for the run's commit (a template like `${commit.id}` works), and the commit's [artifacts](/docs/storage/artifacts).
+`qa run` projects give the same links as [`badges` in the run's parameters](/docs/computing-quantitative-metrics#metrics-shown-as-a-run-time-configuration).
 
 ## Where the files go, with and without a server {#files}
 | | Files | Web app |

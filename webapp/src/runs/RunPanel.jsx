@@ -3,7 +3,7 @@
 // as new and reference, whatever their commits. From there, the run's commit page has the rest.
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AnchorButton, Button, Callout, Classes, Drawer, Icon, MenuItem, NonIdealState, Spinner, Tag, Tooltip } from "@blueprintjs/core";
+import { AnchorButton, Button, Callout, Classes, Drawer, Icon, MenuItem, NonIdealState, Spinner, Tab, Tabs, Tag, Tooltip } from "@blueprintjs/core";
 import { Select } from "@blueprintjs/select";
 
 import { Link, history } from "../router";
@@ -17,6 +17,11 @@ import { copyLink } from "../utils/clipboard";
 import { side_color } from "../sideColors";
 import { commit_page_url, duration_seconds, format_duration, started } from "./table";
 import { absolute } from "./format";
+import { file_url } from "./files";
+import { RunConfiguration, RunFiles, RunLinks, useRunFiles, useRunLinks } from "./RunDetails";
+import { RunNamesHelp } from "./help";
+import { useUser } from "../hooks";
+import { formatBytes } from "../storage/format";
 
 
 const renderRun = labels => (run, { handleClick, handleFocus, modifiers, ref }) => {
@@ -69,6 +74,16 @@ export const RunPanel = ({ project, project_data, run, compare, runs, labels, on
     reference: compare ? (labels?.[compare.id] ?? `run ${compare.id}`) : 'reference',
     colors: { new: side_color(0), reference: side_color(1) },
   }), [labels, run?.id, compare]);
+  // the tab shown: back to the run's results when another run opens
+  const [tab, setTab] = useState('results');
+  const [tab_for, setTabFor] = useState(run?.id);
+  if (tab_for !== run?.id) {
+    setTabFor(run?.id);
+    setTab('results');
+  }
+  const user = useUser();
+  const { files } = useRunFiles(run);
+  const links = useRunLinks({ run, commit, batch, project, project_data, user });
   if (!run) return null;
 
   const duration = duration_seconds(run);
@@ -76,6 +91,7 @@ export const RunPanel = ({ project, project_data, run, compare, runs, labels, on
   const title = <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
     <StatusTag output={run}/>
     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{labels?.[run.id] ?? `Run ${run.id}`}</span>
+    <RunNamesHelp/>
     {run.is_running && <Tag minimal intent="primary">live</Tag>}
   </span>;
 
@@ -111,29 +127,45 @@ export const RunPanel = ({ project, project_data, run, compare, runs, labels, on
         <dt className={Classes.TEXT_MUTED}>Run by</dt>
         <dd style={{ margin: 0 }}>{run.batch?.user_name ?? '—'}, {absolute(started(run))}{duration !== null && <>, {run.is_running ? 'running for' : 'ran'} {format_duration(duration)}</>}</dd>
         {run.data?.sdk?.script && <><dt className={Classes.TEXT_MUTED}>Script</dt><dd style={{ margin: 0 }}><code>{run.data.sdk.script}</code></dd></>}
+        {files?.checkpoints.length > 0 && <>
+          <dt className={Classes.TEXT_MUTED}>Checkpoints</dt>
+          <dd style={{ margin: 0, display: 'flex', flexWrap: 'wrap', gap: '2px 12px', alignItems: 'baseline' }}>
+            {files.checkpoints.slice(0, 3).map(file => <a key={file.path} href={file_url(run.output_dir_url, file.path)} download={file.path.split('/').pop()} title={`Download ${file.path}`}>
+              <Icon icon="download" size={12}/> <code>{file.path}</code> <span className={Classes.TEXT_MUTED}>{formatBytes(file.size)}</span>
+            </a>)}
+            <a href="#files" onClick={event => { event.preventDefault(); setTab('files'); }}>{files.checkpoints.length > 3 ? `all ${files.checkpoints.length}, and the other files` : 'all the files'}</a>
+          </dd>
+        </>}
       </dl>
       {compare && <Callout compact icon="comparison" style={{ marginBottom: 12 }}>
         Compared with <strong>{labels?.[compare.id]}</strong> ({compare.batch?.experiment}, {compare.commit?.id?.slice(0, 7)}): its series are dashed, its images next to this run's.
       </Callout>}
-      {error && <NonIdealState icon="error" title="Could not load the run's commit" description="Its visualizations need the commit's configuration. Open it on the commit page."/>}
-      {!error && isPending && <NonIdealState icon={<Spinner size={24}/>} title="Loading the run…"/>}
-      {!error && !isPending && <SectionErrorBoundary>
-        <OutputCard
-          viewable
-          project={project}
-          commit={commit}
-          config={config.config}
-          metrics={config.metrics}
-          output_new={run}
-          output_ref={compare ?? undefined}
-          controls={controls}
-          onControlsChange={changes => setControls(controls => ({ ...controls, ...changes }))}
-          labels={labels_card}
-          style={{ width: '100%' }}
-        />
-      </SectionErrorBoundary>}
+      <Tabs id="run-panel-tabs" selectedTabId={tab} onChange={setTab} renderActiveTabPanelOnly>
+        <Tab id="results" title="Metrics and visualizations" panel={<div>
+          {error && <NonIdealState icon="error" title="Could not load the run's commit" description="Its visualizations need the commit's configuration. Open it on the commit page."/>}
+          {!error && isPending && <NonIdealState icon={<Spinner size={24}/>} title="Loading the run…"/>}
+          {!error && !isPending && <SectionErrorBoundary>
+            <OutputCard
+              viewable
+              project={project}
+              commit={commit}
+              config={config.config}
+              metrics={config.metrics}
+              output_new={run}
+              output_ref={compare ?? undefined}
+              controls={controls}
+              onControlsChange={changes => setControls(controls => ({ ...controls, ...changes }))}
+              labels={labels_card}
+              style={{ width: '100%' }}
+            />
+          </SectionErrorBoundary>}
+        </div>}/>
+        <Tab id="files" title={<span>Files{files?.checkpoints.length > 0 && <Tag minimal round icon="cube" style={{ marginLeft: 6 }}>{files.checkpoints.length}</Tag>}</span>} panel={<RunFiles run={run} page_url={link}/>}/>
+        <Tab id="configuration" title="Configuration" panel={<RunConfiguration run={run}/>}/>
+        <Tab id="links" title={<span>Links{links.count > 0 && <Tag minimal round style={{ marginLeft: 6 }}>{links.count}</Tag>}</span>} panel={<RunLinks run={run} commit={commit} links={links}/>}/>
+      </Tabs>
       <p className={Classes.TEXT_MUTED} style={{ marginTop: 12, fontSize: 12 }}>
-        <Icon icon="info-sign" size={12}/> <kbd className={Classes.KEY}>Esc</kbd> closes the run, Back too. Its logs, files and attempts are on <Link to={commit_page_url(project, run)}>its commit's page</Link>.
+        <Icon icon="info-sign" size={12}/> <kbd className={Classes.KEY}>Esc</kbd> closes the run, Back too. Its logs and attempts are on <Link to={commit_page_url(project, run)}>its commit's page</Link>.
       </p>
     </div>
   </Drawer>;

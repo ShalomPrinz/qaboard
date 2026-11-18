@@ -9,6 +9,8 @@ import { Fragment, useEffect, useState } from "react";
 import styled from "styled-components";
 import { Button, Checkbox, Classes, HTMLTable, Icon, Intent, Tag, Tooltip } from "@blueprintjs/core";
 
+import { RunNamesHelp } from "./help";
+
 import { Link } from "../router";
 import { StatusTag } from "../components/tags";
 import { format, metric_info } from "../utils";
@@ -53,13 +55,15 @@ const MetricValue = ({ value, info, best }) => {
   return <span className={best ? 'qa-best' : undefined}>{format(scaled)}{info?.suffix ?? ''}</span>;
 };
 
-const SortHeader = ({ column, sort, onSort, children, className, title }) => {
+// `help`: next to the sort button, not in it (a button can't hold another)
+const SortHeader = ({ column, sort, onSort, children, className, title, help }) => {
   const active = sort?.key === column;
   return <th className={className} aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : 'none'} title={title}>
     <button type="button" className="qa-sort" onClick={() => onSort(column)}>
       {children}
       <Icon icon={active ? (sort.desc ? 'caret-down' : 'caret-up') : 'double-caret-vertical'} size={12} className={active ? undefined : Classes.TEXT_MUTED} style={{ opacity: active ? 1 : 0.4 }}/>
     </button>
+    {help}
   </th>;
 };
 
@@ -201,7 +205,7 @@ export const RunsTable = props => {
             </Tooltip>
           </th>
           <SortHeader column="status" sort={sort} onSort={onSort} title="Status"><span className={Classes.TEXT_MUTED} aria-label="Status"/></SortHeader>
-          <SortHeader column="name" sort={sort} onSort={onSort} title="Named by what tells the runs apart: input, configurations, parameters">Run</SortHeader>
+          <SortHeader column="name" sort={sort} onSort={onSort} title="Named by what tells the runs apart: input, configurations, parameters" help={<RunNamesHelp/>}>Run</SortHeader>
           {node !== null && <SortHeader column="experiment" sort={sort} onSort={onSort}>Experiment</SortHeader>}
           {metrics.map(metric => <SortHeader key={metric} column={`metrics.${metric}`} sort={sort} onSort={onSort} className="qa-number">
             <MetricHeader metric={metric} available_metrics={props.available_metrics}/>

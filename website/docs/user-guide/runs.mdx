@@ -66,6 +66,9 @@ One row per run, the running first, then the latest:
 | Who, Started, Duration | Who ran it (click the name to see only their runs), when, how long it ran or has been running (**live**) |
 | Commit | Its commit, a link to its page. `*` when the code had changes that were not committed |
 
+- **Runs have no random ids**: a run is named by what it ran, its experiment, input and configuration. The same
+  configuration on another commit is the same run, compared with it. Several runs of one configuration differ by a
+  seed in their configuration. To point someone to a run, open it and copy its link.
 - **Sort** by any column, e.g. a metric: the first click puts its best value first. Sorting orders the runs loaded.
 - **The best value** of each metric is in bold. QA-Board knows which way is better from the metric's definition,
   else guesses it from its name (`loss`, `error`, `mAP`, `accuracy`...): hover the column's name to see which.
@@ -84,6 +87,20 @@ viewer, as on its commit's page. <kbd>Esc</kbd> or the browser's Back closes it.
 - **Open on the commit page** goes to the run's commit, filtered to the run (and compared with the other run): its
   logs, its attempts, the batch's other views.
 
+### Get its checkpoints, its configuration and its links {#files}
+The run's tabs have what you need to use it, past its curves:
+
+- **Files**: its checkpoints and models first (`.pt`, `.ckpt`, `.safetensors`, `.onnx`, `.h5`... and what is in a
+  *checkpoints/* folder), each with **Download**, its path on the shared storage, and the Python code that loads it.
+  Then its other files, and its folder. The summary above the tabs links its first checkpoints.
+- **Configuration**: what it ran with, the configurations given to `start_run()` and the parameters it logged.
+  **Copy as JSON** to run it again with changes.
+- **Links**: the pages the run links to (its model card, its dataset, a dashboard), the links of the project's
+  **Integrations** menu filled for the run's commit, and the commit's artifacts.
+
+Training code that saves its checkpoints in the run's folder and logs its links gets all of this without setting
+anything up: see [files](/docs/log-from-code#artifacts) and [links](/docs/log-from-code#links).
+
 ## Read the same runs from Python {#python}
 **Python** at the top right gives the code that reads the runs you see, in a notebook or a script:
 
@@ -95,8 +112,13 @@ best = max(runs, key=lambda run: run.metrics.get("val/mAP", 0))
 print(best.params, best.output_dir, best.series("val/loss")[-1])
 ```
 
-The page's address works too: `qb.runs("<the page's address>")` gives what it shows, down to the ticked rows, and
-`qa runs "<address>" --json` from a shell. See [results from Python](/docs/apis).
+The page's address works too: `qb.runs("<the page's address>")` gives what it shows, down to the ticked rows, or
+the run open in it, and `qa runs "<address>" --json` from a shell. To load a checkpoint of the run you look at:
+
+```python
+run = qb.runs("<the page's address, with the run open>")[0]
+state = torch.load(run.output_dir / "checkpoints/best.pt", map_location="cpu")
+``` See [results from Python](/docs/apis).
 
 ## Make it the project's home {#home}
 For projects that train, open the project on its runs rather than its commits: in *qaboard.yaml*,

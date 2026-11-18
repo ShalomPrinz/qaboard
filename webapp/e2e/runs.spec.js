@@ -65,6 +65,39 @@ test('experiments as a tree, their runs across commits, the table driving the pl
   await expect(rows.first()).toContainText('lr=0.01');
 });
 
+test("a run's checkpoints, configuration and links, without setting anything up", async ({ page }) => {
+  const runs = await mockRunsApi(page);
+  const run = runs.find(r => r.batch.experiment === 'detector/backbone' && r.configurations[1].backbone === 'convnext-t');
+  await page.goto(`/${project}/runs/detector/backbone?run=${run.id}`);
+  const panel = page.locator('.bp6-drawer');
+  // the summary links the first checkpoints, the Files tab has them all, first
+  await expect(panel.getByRole('link', { name: /checkpoints\/best\.pt/ })).toHaveAttribute('href', `${run.output_dir_url}/checkpoints/best.pt`);
+  await panel.getByRole('tab', { name: /Files/ }).click();
+  await expect(panel.getByTestId('checkpoint')).toHaveCount(8);
+  await expect(panel.getByTestId('checkpoint').first()).toContainText('checkpoints/best.pt');
+  await expect(panel.getByRole('button', { name: 'Download' }).first()).toHaveAttribute('download', 'best.pt');
+  await expect(panel.getByRole('link', { name: 'eval/predictions.json' })).toBeVisible();
+  await expect(panel.getByText('manifest.outputs.json')).toHaveCount(0);
+
+  // what it ran with: configs, then what it logged, nested with dots
+  await panel.getByRole('tab', { name: 'Configuration' }).click();
+  const params = panel.getByRole('table', { name: "The run's parameters" });
+  await expect(params.getByRole('row', { name: /backbone convnext-t/ })).toBeVisible();
+  await expect(params.getByRole('row', { name: /optimizer\.name adamw/ })).toBeVisible();
+  await expect(params.getByText('badges')).toHaveCount(0);
+
+  // its own links, then its commit's: the Integrations menu's links filled for its commit, not its webhooks
+  await panel.getByRole('tab', { name: /Links/ }).click();
+  await expect(panel.getByRole('button', { name: 'Model card' })).toHaveAttribute('href', `https://models.example.com/detector/runs/${run.id}`);
+  await expect(panel.getByRole('button', { name: 'Model zoo' })).toHaveAttribute('href', `https://models.example.com/detector/${run.commit.id.slice(0, 8)}`);
+  await expect(panel.getByRole('button', { name: "The commit's artifacts", exact: true })).toBeVisible();
+  await expect(panel.getByText('Retrain')).toHaveCount(0);
+
+  // why runs have no ids, how to group them
+  await panel.getByRole('button', { name: 'How runs are named' }).click();
+  await expect(page.getByText('Runs are named by what they ran')).toBeVisible();
+});
+
 test('runs grouped by a parameter: the mean and range of each group', async ({ page }) => {
   await mockRunsApi(page);
   await page.goto(`/${project}/runs/detector/lr-sweep?group_by=lr&lines=mean`);

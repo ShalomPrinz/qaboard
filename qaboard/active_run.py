@@ -411,7 +411,7 @@ def start_run(input: Optional[str] = None, *, configs: Optional[Sequence[Any]] =
 class ActiveRun:
   """
   A run your code is doing: what `start_run()` returns. `log()` its series, `log_metrics()`, `log_params()`,
-  `log_artifact()`, write files in `output_dir`, then `finish()`, or leave the `with` block.
+  `log_artifact()`, `log_link()`, write files in `output_dir`, then `finish()`, or leave the `with` block.
 
   It has the attributes of the `Run` objects `qaboard.runs(url)` gives (`input`, `configs`, `params`, `metrics`,
   `output_dir`, `id`, `url`...), and `run.run` is such a `Run`, as it is now.
@@ -610,6 +610,22 @@ class ActiveRun:
     with self._lock:
       from .utils import merge
       self._params = merge(cleaned, self._params)
+      self._changed = True
+
+  def log_link(self, text: str, url: str, *, icon: Optional[str] = None) -> None:
+    """
+    Links the run to a page: its model card, its dataset, a dashboard. `run.log_link("Model card", url)`. The web app
+    shows it in the run's Links and as a badge on its card. The same text again replaces the link. `icon`: a
+    Blueprint icon name, like "cube".
+    """
+    if not isinstance(text, str) or not text or not isinstance(url, str) or not url:
+      raise TypeError("run.log_link() takes a text and a URL, e.g. run.log_link('Model card', 'https://...')")
+    if not self._can_log('log_link'):
+      return
+    link = {'text': text, 'href': url, **({'icon': icon} if icon else {})}
+    with self._lock:
+      badges = [b for b in self._params.get('badges', []) if not (isinstance(b, dict) and b.get('text') == text)]
+      self._params = {**self._params, 'badges': [*badges, link]}
       self._changed = True
 
   def log_artifact(self, name: Union[str, Path], source: Union[str, Path, bytes, None] = None) -> Optional[Path]:

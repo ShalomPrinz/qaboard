@@ -44,6 +44,11 @@ evaluates:
 See [metrics shown as a run-time configuration](/docs/computing-quantitative-metrics#metrics-shown-as-a-run-time-configuration)
 for the format. Projects often add the training's hyperparameters and final losses, read from their tracker's API.
 
+Trainings logged with `start_run()` get the same with less: their checkpoints, saved in the run's folder, are listed
+first in the run's **Files** on the [Runs page](/docs/user-guide/runs#files), with a download button and the code that
+loads them; `run.log_link("Model card", url)` adds a link; and the links of your Integrations menu show for the run's
+commit, with no setup. See [files and links](/docs/log-from-code#artifacts).
+
 ## Evaluate a model from your training runs {#evaluate-a-model}
 Write a `run()` function that:
 1. reads a model id from `context.params`, or defaults to the model trained for the commit;
